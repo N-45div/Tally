@@ -3,8 +3,10 @@
 PROBE runs in a fresh microVM with exactly the limits every invoice gets (tally.sandbox.run_in_guest) and reports
 what it can see and do. A PDF that broke the parser would be in the same place, with the same reach.
 
-Network checks exchange data, not only connect: a connect() that succeeds can still lead nowhere, so each check
-says whether any bytes came back. Secrets are compared by hash: the guest reports the SHA-256 of each of its
+Network checks exchange data, not only connect. The guest's network is Microsandbox's user-space stack, which
+answers some denied requests itself (a refusal, an empty DNS reply), so getting bytes back is not the same as
+reaching the internet. Each check records what came back, and counts as reached only on a sign of the real service:
+a Cloudflare reply from 1.1.1.1, instance data from the cloud metadata address, an answer record in DNS. Secrets are compared by hash: the guest reports the SHA-256 of each of its
 environment values, and the host compares them with its own secret values and with a key planted for the probe, so
 no secret is ever sent into the guest to look for it.
 
@@ -31,15 +33,20 @@ def tcp(host, port, send=None):
     try:
         s = socket.create_connection((host, port), timeout=3)
     except OSError as e:
-        return "no connection: " + type(e).__name__
+        return {"result": "no connection: " + type(e).__name__, "reply": ""}
     try:
         if send is None:
-            return "connected"
+            return {"result": "connected", "reply": ""}
         s.sendall(send)
-        data = s.recv(64)
-        return "data: %d bytes" % len(data) if data else "connected, nothing came back"
+        data = b""
+        while len(data) < 1024:
+            chunk = s.recv(1024)
+            if not chunk:
+                break
+            data += chunk
+        return {"result": "%d bytes back" % len(data), "reply": data[:300].decode("latin-1")}
     except OSError as e:
-        return "connected, then " + type(e).__name__
+        return {"result": "connected, then " + type(e).__name__, "reply": ""}
     finally:
         s.close()
 
@@ -49,17 +56,19 @@ def dns_over_udp(server):
     s.settimeout(3)
     try:
         s.sendto(query, (server, 53))
-        return "data: %d bytes" % len(s.recv(512))
+        data = s.recv(512)
+        rcode, answers = data[3] & 0x0F, int.from_bytes(data[6:8], "big")
+        return {"result": "%d bytes back, rcode %d, %d answer records" % (len(data), rcode, answers), "answers": answers}
     except OSError as e:
-        return "no answer: " + type(e).__name__
+        return {"result": "no answer: " + type(e).__name__, "answers": 0}
     finally:
         s.close()
 
 def resolves(name):
     try:
-        return "resolved: " + socket.getaddrinfo(name, 443)[0][4][0]
+        return {"result": "resolved to " + socket.getaddrinfo(name, 443)[0][4][0], "resolved": True}
     except OSError as e:
-        return "not resolved: " + type(e).__name__
+        return {"result": "not resolved: " + type(e).__name__, "resolved": False}
 
 def writable(folder):
     try:
@@ -122,5 +131,17 @@ def probe(work_dir: Path | None = None) -> dict:
     secrets = _secret_hashes()
     seen["leaked_secrets"] = sorted(secrets[h] for h in seen.pop("env_sha256").values() if h in secrets)
     seen["host_kernel"] = platform.release()
-    seen["reached"] = sorted(k for k, v in seen["network"].items() if v.startswith(("data:", "resolved:")))
+    seen["reached"] = reached(seen["network"])
     return seen
+
+
+def reached(network: dict) -> list[str]:
+    """The checks whose reply could only have come from the real service, not from the sandbox's own stack."""
+    signs = {
+        "http 1.1.1.1:80": lambda r: "cloudflare" in r.get("reply", "").lower(),
+        "cloud metadata 169.254.169.254:80": lambda r: any(w in r.get("reply", "").lower() for w in ("instance", "interfaces", "hostname")),
+        "dns udp 8.8.8.8:53": lambda r: r.get("answers", 0) > 0,
+        "name example.com": lambda r: r.get("resolved", False),
+        "tcp 1.1.1.1:443": lambda r: False,  # a bare connect proves nothing either way; it is reported, not judged
+    }
+    return sorted(k for k, sign in signs.items() if k in network and sign(network[k]))
