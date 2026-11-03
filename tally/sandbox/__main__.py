@@ -3,6 +3,7 @@
     python -m tally.sandbox prepare [guest_root]   copy the airlock and its PDF libraries for the guest; pull the image
     python -m tally.sandbox doctor                 say whether a sandbox can run here, and if not, why
     python -m tally.sandbox open <invoice.pdf>     open one file in a fresh microVM and print its verdict
+    python -m tally.sandbox probe                  print what a file could reach from inside its microVM
 """
 from __future__ import annotations
 
@@ -65,6 +66,11 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"verdict": r["verdict"], "reasons": r["reasons"], "images": r["images"],
                           "seconds": round(opened.seconds, 2), "sandbox": r["sandbox"]}))
         return 0
+    if argv == ["probe"]:
+        from tally.sandbox.probe import probe
+        seen = probe()
+        print(json.dumps(seen, indent=2))
+        return 0 if not (seen["reached"] or seen["leaked_secrets"]) else 1
     print(__doc__.strip(), file=sys.stderr)
     return 2
 
