@@ -1,0 +1,28 @@
+[project]
+name = "tally"
+version = "0.1.0"
+description = "An airlock for supplier invoices: every file is opened in a throwaway sandbox, its hidden text exposed, its numbers checked by code, and nothing is paid until a person approves."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "N DIVIJ" }]
+requires-python = ">=3.11"
+# PDF handling is pypdfium2 (Apache-2.0 / BSD) and pypdf (BSD), so the whole project stays MIT-compatible.
+dependencies = [
+  "pypdfium2>=4.30",
+  "pypdf>=5.0",
+  "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+# reportlab only builds the test invoices, including the attack ones.
+dev = ["pytest>=8.0", "reportlab>=4.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tally*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

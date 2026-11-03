@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.env.*
+!.env.example
+# runtime data: uploaded invoices, sandbox outputs, benchmark downloads
+data/
+out/
+*.log
