@@ -32,6 +32,7 @@ GUEST_ROOT = Path(os.environ.get("TALLY_GUEST_ROOT", "/var/lib/tally/guest"))
 CPUS = 1
 MEMORY = "512M"
 TIME_LIMIT_S = 60
+GUEST_ENV = ("-e", "PYTHONPATH=/opt/tally:/opt/tally/site", "-e", "PYTHONDONTWRITEBYTECODE=1")
 
 
 class SandboxUnavailable(RuntimeError):
@@ -100,12 +101,11 @@ def open_invoice(pdf_path: Path, work_dir: Path | None = None) -> Opened:
         made = _msb("create", "--name", name, "--no-net", "--cpus", str(CPUS), "--memory", MEMORY,
                     "--max-duration", f"{TIME_LIMIT_S + 30}s",
                     "-v", f"{GUEST_ROOT}:/opt/tally:ro", "-v", f"{in_dir}:/in:ro", "-v", f"{out_dir}:/out",
-                    "-e", "PYTHONPATH=/opt/tally:/opt/tally/site", "-e", "PYTHONDONTWRITEBYTECODE=1",
-                    IMAGE, timeout=180)
+                    *GUEST_ENV, IMAGE, timeout=180)
         if made.returncode != 0:
             raise SandboxUnavailable("msb create failed: " + (made.stdout + made.stderr).strip()[-500:])
         try:
-            ran = _msb("exec", "--timeout", f"{TIME_LIMIT_S}s", name, "--",
+            ran = _msb("exec", "--timeout", f"{TIME_LIMIT_S}s", *GUEST_ENV, name, "--",
                        "python", "-m", "tally.airlock.inspect", "/in/invoice.pdf", "/out", timeout=TIME_LIMIT_S + 30)
         except subprocess.TimeoutExpired:
             ran = None
