@@ -9,3 +9,6 @@ __pycache__/
 data/
 out/
 *.log
+# build leftovers from pip install -e .
+*.egg-info/
+build/
