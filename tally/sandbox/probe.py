@@ -4,9 +4,9 @@ PROBE runs in a fresh microVM with exactly the limits every invoice gets (tally.
 what it can see and do. A PDF that broke the parser would be in the same place, with the same reach.
 
 Network checks exchange data, not only connect. The guest's network is Microsandbox's user-space stack, which
-answers some denied requests itself (a refusal, an empty DNS reply), so getting bytes back is not the same as
-reaching the internet. Each check records what came back, and counts as reached only on a sign of the real service:
-a Cloudflare reply from 1.1.1.1, instance data from the cloud metadata address, an answer record in DNS. Secrets are compared by hash: the guest reports the SHA-256 of each of its
+answers denied requests itself: HTTP gets a 403 with "network_policy_denied", DNS gets "no such name" with no
+answers. Each check records what came back and is judged fail-closed: anything other than a refusal or one of those
+denials counts as reached, so a reply nobody anticipated fails the probe. Secrets are compared by hash: the guest reports the SHA-256 of each of its
 environment values, and the host compares them with its own secret values and with a key planted for the probe, so
 no secret is ever sent into the guest to look for it.
 
@@ -135,13 +135,20 @@ def probe(work_dir: Path | None = None) -> dict:
     return seen
 
 
+DENIED_HTTP = '"code":"network_policy_denied"'
+
+
+def _http_denied(r: dict) -> bool:
+    return r["result"].startswith("no connection") or (r["reply"].startswith("HTTP/1.1 403") and DENIED_HTTP in r["reply"])
+
+
 def reached(network: dict) -> list[str]:
-    """The checks whose reply could only have come from the real service, not from the sandbox's own stack."""
-    signs = {
-        "http 1.1.1.1:80": lambda r: "cloudflare" in r.get("reply", "").lower(),
-        "cloud metadata 169.254.169.254:80": lambda r: any(w in r.get("reply", "").lower() for w in ("instance", "interfaces", "hostname")),
-        "dns udp 8.8.8.8:53": lambda r: r.get("answers", 0) > 0,
-        "name example.com": lambda r: r.get("resolved", False),
-        "tcp 1.1.1.1:443": lambda r: False,  # a bare connect proves nothing either way; it is reported, not judged
+    """The checks that got anything other than a refusal or the sandbox's own denial. Fail-closed."""
+    denied = {
+        "tcp 1.1.1.1:443": lambda r: r["result"].startswith("no connection"),
+        "http 1.1.1.1:80": _http_denied,
+        "cloud metadata 169.254.169.254:80": _http_denied,
+        "dns udp 8.8.8.8:53": lambda r: r["result"].startswith("no answer") or (", rcode 3," in r["result"] and r["answers"] == 0),
+        "name example.com": lambda r: not r["resolved"],
     }
-    return sorted(k for k, sign in signs.items() if k in network and sign(network[k]))
+    return sorted(k for k, is_denied in denied.items() if not is_denied(network[k]))
