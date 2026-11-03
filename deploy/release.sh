@@ -22,6 +22,9 @@ step() { echo; echo "== $*"; }
   step "guest files"; .venv/bin/python -m tally.sandbox prepare
   step "sandbox doctor"; .venv/bin/python -m tally.sandbox doctor; echo "exit $?"
   step "tests"; .venv/bin/pytest -q -rs -p no:cacheprovider; echo "pytest exit $?"
+  step "one invoice with a hidden instruction, end to end"
+  .venv/bin/python -c "from pathlib import Path; from tests.invoices import HIDDEN, make; make(Path('/tmp/tally-sample.pdf'), HIDDEN['white_on_white'][0])" \
+    && .venv/bin/python -m tally.sandbox open /tmp/tally-sample.pdf
   # Keep the five newest releases.
   ls -1dt /opt/tally/releases/*/ | tail -n +6 | xargs -r rm -rf
   echo; echo "done $(date -u +%FT%TZ)"
