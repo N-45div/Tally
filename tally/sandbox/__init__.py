@@ -77,6 +77,34 @@ def _hold(reason: str, out_dir: Path, size: int) -> dict:
             "problems": [reason], "verdict": "hold", "reasons": [reason]}
 
 
+def run_in_guest(argv: list[str], mounts: list[tuple[Path, str, bool]]) -> subprocess.CompletedProcess | None:
+    """Run one command in a fresh microVM with Tally's limits, then remove the microVM. None if it timed out.
+
+    Every microVM gets the same limits: no network, CPUS, MEMORY, a time limit, and the guest code read-only at
+    /opt/tally. `mounts` adds folders as (host path, guest path, read-only).
+    """
+    name = f"tally-{uuid.uuid4().hex[:16]}"
+    volumes = ["-v", f"{GUEST_ROOT}:/opt/tally:ro"]
+    for host, guest, read_only in mounts:
+        volumes += ["-v", f"{host}:{guest}" + (":ro" if read_only else "")]
+    try:
+        made = _msb("create", "--name", name, "--no-net", "--cpus", str(CPUS), "--memory", MEMORY,
+                    "--max-duration", f"{TIME_LIMIT_S + 30}s", *volumes, *GUEST_ENV, IMAGE, timeout=180)
+        if made.returncode != 0:
+            raise SandboxUnavailable("msb create failed: " + (made.stdout + made.stderr).strip()[-500:])
+        try:
+            return _msb("exec", "--timeout", f"{TIME_LIMIT_S}s", *GUEST_ENV, name, "--", *argv, timeout=TIME_LIMIT_S + 30)
+        except subprocess.TimeoutExpired:
+            return None
+    except subprocess.TimeoutExpired:
+        raise SandboxUnavailable("msb create did not finish in time") from None
+    finally:
+        try:
+            _msb("rm", "--force", name, timeout=60)
+        except subprocess.TimeoutExpired:
+            pass  # --max-duration stops it regardless
+
+
 def open_invoice(pdf_path: Path, work_dir: Path | None = None) -> Opened:
     """Run the airlock on one file in a fresh microVM and return its checked report and page images."""
     why = available()
@@ -95,28 +123,8 @@ def open_invoice(pdf_path: Path, work_dir: Path | None = None) -> Opened:
     pdf_bytes = pdf_path.read_bytes()
     (in_dir / "invoice.pdf").write_bytes(pdf_bytes)
 
-    name = f"tally-{uuid.uuid4().hex[:16]}"
-    ran = None
-    try:
-        made = _msb("create", "--name", name, "--no-net", "--cpus", str(CPUS), "--memory", MEMORY,
-                    "--max-duration", f"{TIME_LIMIT_S + 30}s",
-                    "-v", f"{GUEST_ROOT}:/opt/tally:ro", "-v", f"{in_dir}:/in:ro", "-v", f"{out_dir}:/out",
-                    *GUEST_ENV, IMAGE, timeout=180)
-        if made.returncode != 0:
-            raise SandboxUnavailable("msb create failed: " + (made.stdout + made.stderr).strip()[-500:])
-        try:
-            ran = _msb("exec", "--timeout", f"{TIME_LIMIT_S}s", *GUEST_ENV, name, "--",
-                       "python", "-m", "tally.airlock.inspect", "/in/invoice.pdf", "/out", timeout=TIME_LIMIT_S + 30)
-        except subprocess.TimeoutExpired:
-            ran = None
-    except subprocess.TimeoutExpired:
-        raise SandboxUnavailable("msb create did not finish in time") from None
-    finally:
-        try:
-            _msb("rm", "--force", name, timeout=60)
-        except subprocess.TimeoutExpired:
-            pass  # --max-duration stops it regardless
-
+    ran = run_in_guest(["python", "-m", "tally.airlock.inspect", "/in/invoice.pdf", "/out"],
+                       [(in_dir, "/in", True), (out_dir, "/out", False)])
     if ran is None or ran.returncode != 0:
         why = "timed out" if ran is None else f"exited with {ran.returncode}"
         report = _hold(f"the sandbox did not finish ({why})", out_dir, size)
