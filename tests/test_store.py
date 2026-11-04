@@ -82,6 +82,14 @@ def test_the_same_file_or_number_twice_is_found(store):
         store.save_result("worker", iid, airlock={}, reading={}, check_reading={}, decision=_decision(True, store.vid, store.pid))
     seen = store.others_like(b, store.invoice(b)["sha256"], store.vid, "INV20260418")
     assert seen == {"same_file": [a], "same_number": [a]}
+    # The first one is not a duplicate of the copy that came after it...
+    assert store.others_like(a, store.invoice(a)["sha256"], store.vid, "INV20260418") == {"same_file": [], "same_number": []}
+    # ...and once the copy is rejected, the first is free of it, while an approved one always counts.
+    store.decide("carol", b, False, "duplicate", recheck=None)
+    assert store.others_like(a, store.invoice(a)["sha256"], store.vid, "INV20260418")["same_number"] == []
+    store.decide("carol", a, True, "", recheck=lambda inv: _decision(True, store.vid, store.pid))
+    c = store.add_invoice("bob", "c.pdf", b"%PDF other")
+    assert store.others_like(c, "x", store.vid, "INV20260418")["same_number"] == [a]
 
 
 def test_passwords(store):

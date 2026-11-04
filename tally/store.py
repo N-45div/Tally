@@ -289,11 +289,14 @@ class Store:
         return [self.invoice(r[0]) for r in rows]
 
     def others_like(self, invoice_id: int, sha256: str, vendor_id: int | None, number_key: str) -> dict:
-        """Other live invoices (not rejected or failed) with the same file, or the same vendor and invoice number."""
-        live = "status NOT IN ('rejected', 'failed') AND id != ?"
-        same_file = [r[0] for r in self.db.execute(f"SELECT id FROM invoices WHERE {live} AND sha256 = ?", (invoice_id, sha256))]
+        """Earlier live invoices (not rejected or failed), or approved ones, with the same file or the same vendor and
+        invoice number. The duplicate is the later one: an invoice is not held because a copy arrived after it,
+        while that copy is held because of it. If the earlier one is the bad one, rejecting it frees the later."""
+        live = "status NOT IN ('rejected', 'failed') AND id != ? AND (id < ? OR status = 'approved')"
+        same_file = [r[0] for r in self.db.execute(f"SELECT id FROM invoices WHERE {live} AND sha256 = ?", (invoice_id, invoice_id, sha256))]
         same_number = [r[0] for r in self.db.execute(
-            f"SELECT id FROM invoices WHERE {live} AND vendor_id = ? AND invoice_number_key = ?", (invoice_id, vendor_id, number_key))] \
+            f"SELECT id FROM invoices WHERE {live} AND vendor_id = ? AND invoice_number_key = ?",
+            (invoice_id, invoice_id, vendor_id, number_key))] \
             if vendor_id and number_key else []
         return {"same_file": same_file, "same_number": same_number}
 
