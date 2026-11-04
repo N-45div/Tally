@@ -1,15 +1,55 @@
 #!/bin/bash
-# Install one release on a Tally host and check it, as the tally user:  bash release.sh <release dir>
+# Install one release on a Tally host, check it, and run it if every check passes, as the tally user:
+#   bash release.sh <release dir>
 #
-# It installs the release, prepares the microVM guest, runs Microsandbox's host check and the whole test suite (the
-# microVM tests run here, because this host has KVM), and publishes everything it printed at /status.txt. A step
-# that fails is reported, not hidden; the next steps still run so the page shows the whole picture.
+# It installs the release, prepares its microVM guest, runs Microsandbox's host check and the whole test suite (the
+# microVM, containment, live model and end-to-end tests all run here: this host has KVM and the model key), probes
+# what a guest can reach, and publishes everything it printed at /status.txt. A step that fails is reported, not
+# hidden. Only a release whose tests all pass replaces the running web app and worker; otherwise the previous
+# release keeps running.
 set -uo pipefail
 REL="$1"
 WWW=/var/www/tally
-export PATH="$HOME/.local/bin:$PATH" TALLY_GUEST_ROOT=/var/lib/tally/guest
+DATA=/var/lib/tally/data
+export PATH="$HOME/.local/bin:$PATH" TALLY_GUEST_ROOT="$REL/guest" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 OUT="$WWW/status.txt.new"
 step() { echo; echo "== $*"; }
+
+run_services() {
+  local units="$HOME/.config/systemd/user"
+  mkdir -p "$units"
+  cat > "$units/tally-web.service" <<EOF
+[Unit]
+Description=Tally web app ($(basename "$REL"))
+
+[Service]
+EnvironmentFile=/etc/tally/web.env
+ExecStart=$REL/.venv/bin/gunicorn --bind 127.0.0.1:8080 --workers 2 --threads 4 --access-logfile - tally.web:from_env()
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+  cat > "$units/tally-worker.service" <<EOF
+[Unit]
+Description=Tally worker ($(basename "$REL"))
+
+[Service]
+EnvironmentFile=/etc/tally/worker.env
+Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=TALLY_GUEST_ROOT=$REL/guest
+ExecStart=$REL/.venv/bin/python -m tally.pipeline $DATA
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload
+  systemctl --user enable tally-web tally-worker
+  systemctl --user restart tally-web tally-worker
+  sleep 2
+  echo "tally-web: $(systemctl --user is-active tally-web), tally-worker: $(systemctl --user is-active tally-worker)"
+}
 
 {
   echo "release $(basename "$REL") ($(cat "$REL/REVISION" 2>/dev/null || echo 'no revision')), $(date -u +%FT%TZ)"
@@ -21,13 +61,23 @@ step() { echo; echo "== $*"; }
   cd "$REL"
   step "guest files"; .venv/bin/python -m tally.sandbox prepare
   step "sandbox doctor"; .venv/bin/python -m tally.sandbox doctor; echo "exit $?"
-  step "tests"; .venv/bin/pytest -q -rs -p no:cacheprovider; echo "pytest exit $?"
+  # The tests run with the worker's settings, so the live tests run, and the probe checks that the real key
+  # stays out of the guest. The key itself is never printed.
+  set -a; . /etc/tally/worker.env; set +a
+  step "tests"; .venv/bin/pytest -q -rs -p no:cacheprovider; TESTS=$?; echo "pytest exit $TESTS"
   step "what a file can reach from inside its microVM"; .venv/bin/python -m tally.sandbox probe; echo "exit $?"
   step "one invoice with a hidden instruction, end to end"
   .venv/bin/python -c "from pathlib import Path; from tests.invoices import HIDDEN, make; make(Path('/tmp/tally-sample.pdf'), HIDDEN['white_on_white'][0])" \
     && .venv/bin/python -m tally.sandbox open /tmp/tally-sample.pdf
-  # Keep the five newest releases.
-  ls -1dt /opt/tally/releases/*/ | tail -n +6 | xargs -r rm -rf
+  step "services"
+  if [ "$TESTS" -eq 0 ]; then
+    run_services
+  else
+    echo "not started: the tests failed, so the previous release keeps running"
+  fi
+  # Keep the five newest releases, and always the one the services run.
+  RUNNING=$(grep -o '/opt/tally/releases/[^/]*' "$HOME/.config/systemd/user/tally-web.service" 2>/dev/null | head -1)
+  ls -1dt /opt/tally/releases/*/ | tail -n +6 | sed 's#/$##' | grep -vxF "${RUNNING:-none}" | xargs -r rm -rf
   echo; echo "done $(date -u +%FT%TZ)"
 } > "$OUT" 2>&1
 mv "$OUT" "$WWW/status.txt"
