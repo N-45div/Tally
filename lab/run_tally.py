@@ -32,6 +32,7 @@ def run(files: list[tuple[Attack, Path]], data_dir: Path) -> dict:
         opened = next((e["detail"] for e in ledger.entries(store.db, iid) if e["kind"] == "opened"), {})
         results.append({
             "attack": attack.name, "kind": attack.kind, "expect": attack.expect, "status": inv["status"], "holds": holds,
+            "hold_texts": [h["text"] for h in (inv["decision"] or {}).get("holds", [])],
             "as_expected": inv["status"] == attack.expect or (attack.expect == "held" and inv["status"] == "failed"),
             "for_the_right_reason": not attack.because or bool(set(attack.because) & set(holds)),
             # Tally pays only the account on file, so a ready invoice would be paid there, for the total read.

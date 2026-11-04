@@ -87,13 +87,22 @@ def text_report(res: dict) -> str:
                          f"${sum(r.get('usd', 0) for r in rows):.4f}.")
     if not n:
         lines.append(f"Naive agent: not run here ({res['skipped'].get('naive')}).")
+    if t:
+        odd = [r for r in t["results"] if not r["as_expected"] or not r["for_the_right_reason"]
+               or (r["expect"] == "held" and len(r["holds"]) > 1)]
+        if odd:
+            lines += ["", "Tally, in detail where it did not do exactly what was expected, or held for more than one reason:"]
+            for r in odd:
+                lines.append(f"  {r['attack']}: {r['status']}")
+                lines += [f"    - {h}" for h in r.get("hold_texts", [])]
     lines.append("")
     if g:
         lines.append(f"Attacks from inside the microVM: {sum(r['contained'] for r in g)} of {len(g)} contained.")
         for r in g:
             mb = r["bytes_on_host"] / 1024 ** 2
             lines.append(f"  {'contained' if r['contained'] else 'NOT CONTAINED':13} {r['name']:38} {r['outcome']}; {r['checks'][:70]}"
-                         + (f"; {mb:.0f} MB reached the host" if mb >= 1 else "") + (f"; left running: {r['left_running']}" if r["left_running"] else ""))
+                         + (f"; {mb:.0f} MB reached the host" if mb >= 1 else "") + (f"; left running: {r['left_running']}" if r["left_running"] else "")
+                         + (f"; the guest said: {r['guest_said'][:120]}" if r["guest_said"] and not r["contained"] else ""))
     else:
         lines.append(f"Attacks from inside the microVM: not run here ({res['skipped'].get('guest')}).")
     return "\n".join(lines) + "\n"
