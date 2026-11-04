@@ -37,6 +37,24 @@ This README grows with the project. The status of each part is stated as it land
 - **Reading the invoice.** A vision model on Vultr Serverless Inference reads the page images, never the text layer,
   into fixed fields. Live tests on the clean invoice and two with hidden instructions: every checked field correct,
   the hidden bank account never read, under $0.01 per invoice.
+- **Two readings, fixed rules.** Each invoice is read twice, by two model families (GLM, then Qwen), and is held if
+  the readings differ on the vendor, invoice number, purchase order, currency, total or bank details. Then fixed
+  code, not a model, checks: the vendor is on file by its exact name (a lookalike name is called out); the bank
+  details printed are the ones on file; the IBAN's check digits hold; the purchase order exists, is this vendor's,
+  is open, is in the same currency and has enough left; the numbers add up; and the invoice is not a later copy of
+  one seen before. Every check is shown, passed or failed.
+- **Approval.** Only an invoice that passed every check can be approved, and the checks run again at that moment.
+  Payment always goes to the bank details on file, never to an account printed on an invoice; a change of bank
+  details needs a note of how it was confirmed, and the old details stay in the ledger. Tally does not move money
+  itself: an approval records what to pay, to whom and to which account.
+- **Ledger.** Every step of every invoice, and every change to vendors and purchase orders, goes in an append-only
+  ledger where each entry carries the hash of the one before; the ledger page checks the chain.
+- **Web app and worker.** People sign in, upload PDFs, see why each invoice is held or ready (both readings side by
+  side, the page images, any hidden text quoted as plain text), and approve or reject. The web app never opens a
+  file and never has the model key; a separate worker opens, reads and checks. Measured on the VX1 host: three
+  invoices uploaded together (a clean one, one with a hidden instruction, one asking for payment to a new account)
+  were opened, read twice and checked in 20 seconds in all. The clean one was ready to approve; the other two were
+  held, for the hidden text and for the new account. Two readings cost $0.0046 per invoice.
 
 ## Run the tests
 
@@ -58,8 +76,20 @@ python deploy/host.py push      # sends the current commit; needs TALLY_HOST and
 python deploy/host.py status    # prints the host's latest checks
 ```
 
-The host opens only ports 80 and 443, has SSH turned off, and serves HTTPS with Caddy. Each release is installed,
-tested (microVM and containment tests included) and probed, and the output is published at `/status.txt`.
+The host opens only ports 80 and 443, has SSH turned off, and serves the web app over HTTPS with Caddy. Each
+release is installed, tested and probed, and the output is published at `/status.txt`. On the host every test runs,
+with none skipped: the microVM, containment, live model and end-to-end ones too. A release replaces the running
+web app and worker only if all of its tests pass; otherwise the previous release keeps running.
+
+## Known limits
+
+- The web app and the worker run as the same system user. The model key is kept out of the web app's environment,
+  but a break-in to the web app process could still read the worker's settings file.
+- The lockout after repeated wrong passwords is kept per server process, so it slows guessing rather than stops it.
+- If the sandbox itself were broken into, the files it hands back are checked, but a consistent lie (a clean report
+  and clean-looking pages for a bad file) would pass those checks. The rules about vendors, bank details and
+  purchase orders do not depend on the sandbox, and nothing is approved without a person.
+- The ledger shows a quiet edit; it cannot stop someone who rewrites the whole database file from the start.
 
 ## License
 
