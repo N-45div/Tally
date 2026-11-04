@@ -44,3 +44,13 @@ def test_the_guest_sees_no_host_files_and_no_secrets(seen):
 def test_the_guest_cannot_use_more_than_its_memory():
     ran = sandbox.run_in_guest(["python", "-c", "b = b'x' * (1024 ** 3); print(len(b))"], [])
     assert ran is not None and ran.returncode != 0 and "1073741824" not in ran.stdout
+
+
+def test_a_guest_that_writes_too_much_is_stopped_and_its_writing_deleted(tmp_path):
+    import time
+    (tmp_path / "out").mkdir()
+    code = "chunk = b'x' * (1 << 20)\nwith open('/out/fill', 'wb') as f:\n    for _ in range(2048):\n        f.write(chunk)"
+    started = time.monotonic()
+    ran = sandbox.run_in_guest(["python", "-c", code], [(tmp_path / "out", "/out", False)])
+    assert ran is not None and ran.returncode == -1 and ran.stderr.startswith("stopped: wrote"), ran
+    assert list((tmp_path / "out").iterdir()) == [] and time.monotonic() - started < 30

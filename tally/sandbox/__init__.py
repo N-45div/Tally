@@ -24,8 +24,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from tally.airlock.inspect import MAX_BYTES
-from tally.sandbox.check import BadOutput, check_output
+from tally.airlock.inspect import MAX_BYTES, MAX_PAGES
+from tally.sandbox.check import MAX_PNG_BYTES, MAX_REPORT_BYTES, BadOutput, check_output
 
 IMAGE = os.environ.get("TALLY_SANDBOX_IMAGE", "python:3.12-slim")
 GUEST_ROOT = Path(os.environ.get("TALLY_GUEST_ROOT", "/var/lib/tally/guest"))
@@ -33,6 +33,10 @@ CPUS = 1
 MEMORY = "512M"
 TIME_LIMIT_S = 60
 GUEST_ENV = ("-e", "PYTHONPATH=/opt/tally:/opt/tally/site", "-e", "PYTHONDONTWRITEBYTECODE=1")
+# The most a real airlock run can write: every page at the largest size the checks accept, and the report. A guest
+# that writes more is stopped while it runs (the lab measured 2 GB reaching the host in 6 seconds before this).
+OUT_LIMIT = MAX_PAGES * MAX_PNG_BYTES + MAX_REPORT_BYTES
+WATCH_SECONDS = 0.2
 
 
 class SandboxUnavailable(RuntimeError):
@@ -77,8 +81,55 @@ def _hold(reason: str, out_dir: Path, size: int) -> dict:
             "problems": [reason], "verdict": "hold", "reasons": [reason]}
 
 
+def _written(folders: list[Path]) -> int:
+    total = 0
+    for folder in folders:
+        for root, _, names in os.walk(folder, followlinks=False):
+            for n in names:
+                try:
+                    total += os.lstat(os.path.join(root, n)).st_size
+                except OSError:
+                    pass
+    return total
+
+
+def _empty(folder: Path) -> None:
+    for p in folder.iterdir():
+        p.unlink() if p.is_file() or p.is_symlink() else shutil.rmtree(p, ignore_errors=True)
+
+
+def _exec_watched(name: str, argv: list[str], writable: list[Path]) -> subprocess.CompletedProcess | None:
+    """msb exec, watched from here: the microVM is removed if it runs past the time limit (None) or writes more than
+    OUT_LIMIT into its writable folders (returncode -1, and what it wrote is deleted at once)."""
+    with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+        proc = subprocess.Popen(["msb", "exec", "--timeout", f"{TIME_LIMIT_S}s", *GUEST_ENV, name, "--", *argv],
+                                stdout=out, stderr=err, text=True)
+        deadline = time.monotonic() + TIME_LIMIT_S + 30
+        stopped = None
+        while proc.poll() is None:
+            written = _written(writable)
+            if written > OUT_LIMIT:
+                stopped = f"stopped: wrote {written // 2 ** 20} MB, more than the {OUT_LIMIT // 2 ** 20} MB a real run can"
+            elif time.monotonic() > deadline:
+                stopped = "timed out"
+            if stopped:
+                _msb("rm", "--force", name, timeout=60)
+                proc.kill()
+                proc.wait()
+                for folder in writable:
+                    _empty(folder)
+                break
+            time.sleep(WATCH_SECONDS)
+        if stopped == "timed out":
+            return None
+        out.seek(0)
+        err.seek(0)
+        return subprocess.CompletedProcess(proc.args, -1 if stopped else proc.returncode, out.read(), stopped or err.read())
+
+
 def run_in_guest(argv: list[str], mounts: list[tuple[Path, str, bool]]) -> subprocess.CompletedProcess | None:
-    """Run one command in a fresh microVM with Tally's limits, then remove the microVM. None if it timed out.
+    """Run one command in a fresh microVM with Tally's limits, then remove the microVM. None if it timed out; a
+    returncode of -1, with the reason as stderr, if it was stopped for writing too much.
 
     Every microVM gets the same limits: no network, CPUS, MEMORY, a time limit, and the guest code read-only at
     /opt/tally. `mounts` adds folders as (host path, guest path, read-only).
@@ -92,10 +143,7 @@ def run_in_guest(argv: list[str], mounts: list[tuple[Path, str, bool]]) -> subpr
                     "--max-duration", f"{TIME_LIMIT_S + 30}s", *volumes, *GUEST_ENV, IMAGE, timeout=180)
         if made.returncode != 0:
             raise SandboxUnavailable("msb create failed: " + (made.stdout + made.stderr).strip()[-500:])
-        try:
-            return _msb("exec", "--timeout", f"{TIME_LIMIT_S}s", *GUEST_ENV, name, "--", *argv, timeout=TIME_LIMIT_S + 30)
-        except subprocess.TimeoutExpired:
-            return None
+        return _exec_watched(name, argv, [host for host, _, read_only in mounts if not read_only])
     except subprocess.TimeoutExpired:
         raise SandboxUnavailable("msb create did not finish in time") from None
     finally:
@@ -126,7 +174,7 @@ def open_invoice(pdf_path: Path, work_dir: Path | None = None) -> Opened:
     ran = run_in_guest(["python", "-m", "tally.airlock.inspect", "/in/invoice.pdf", "/out"],
                        [(in_dir, "/in", True), (out_dir, "/out", False)])
     if ran is None or ran.returncode != 0:
-        why = "timed out" if ran is None else f"exited with {ran.returncode}"
+        why = "timed out" if ran is None else ran.stderr if ran.returncode == -1 else f"exited with {ran.returncode}"
         report = _hold(f"the sandbox did not finish ({why})", out_dir, size)
     else:
         try:
