@@ -2,9 +2,13 @@
 # One-time setup of a Tally host: Ubuntu 24.04 on a Vultr VX1 instance. Run as root on first boot, with the first
 # release already unpacked:  bash host-setup.sh /opt/tally/releases/<release>
 #
-# The host ends up with: only ports 80 and 443 open and no SSH; Caddy serving HTTPS on <ip>.sslip.io; a `tally`
-# user that may start microVMs and nothing else; Microsandbox installed for that user; the deploy endpoint; and the
-# first release installed and checked, its results published at https://<host>/status.txt.
+# The host ends up with: only ports 80 and 443 open and no SSH; Caddy serving HTTPS on <ip>.sslip.io, the web app
+# behind it; a `tally` user that may start microVMs and nothing else, running the web app and the worker as its own
+# services; Microsandbox installed for that user; the deploy endpoint; and the first release installed and checked,
+# its results published at https://<host>/status.txt.
+#
+# The first-boot script leaves two files for this one: /etc/tally/inference.env (the model key, for the worker only)
+# and /etc/tally/first-user (a name and a password to sign in with). Both are used here and removed.
 set -euo pipefail
 REL="$1"
 WWW=/var/www/tally
@@ -44,9 +48,13 @@ $HOST {
 	handle /deploy* {
 		reverse_proxy 127.0.0.1:8081
 	}
-	handle {
+	@published path /status.txt /setup.txt
+	handle @published {
 		root * $WWW
 		file_server
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080
 	}
 }
 EOF
@@ -54,8 +62,22 @@ systemctl restart caddy
 note "https://$HOST is up"
 
 id tally >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/tally --shell /bin/bash --groups kvm tally
-install -d -o tally -g tally /opt/tally/releases /var/lib/tally/guest
+install -d -o tally -g tally /opt/tally/releases
+install -d -o tally -g tally -m 0700 /var/lib/tally/data
 chown -R tally:tally /opt/tally/releases "$WWW"
+# The tally user's own services (the web app and the worker) run without anyone signed in, and releases restart them.
+loginctl enable-linger tally
+
+# Settings. The web app and the worker get separate files, so the web app never has the model key in its
+# environment. (Both run as the tally user: the split is by process, not by user.)
+umask 077
+printf 'TALLY_DATA=/var/lib/tally/data\nTALLY_SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > /etc/tally/web.env
+{ echo TALLY_DATA=/var/lib/tally/data; cat /etc/tally/inference.env 2>/dev/null || true; } > /etc/tally/worker.env
+umask 022
+chown root:tally /etc/tally/web.env /etc/tally/worker.env
+chmod 0640 /etc/tally/web.env /etc/tally/worker.env
+rm -f /etc/tally/inference.env
+note "settings written; the model key is in the worker's settings only"
 runuser -u tally -- bash -c 'curl -fsSL https://install.microsandbox.dev | sh'
 note "microsandbox installed: $(runuser -u tally -- /var/lib/tally/.local/bin/msb --version 2>&1 || true)"
 
@@ -82,5 +104,14 @@ systemctl enable --now tally-deploy
 note "deploy endpoint running"
 
 chown -R tally:tally "$REL"
-runuser -u tally -- env PATH=/var/lib/tally/.local/bin:/usr/bin:/bin bash "$REL/deploy/release.sh" "$REL"
+runuser -u tally -- env PATH=/var/lib/tally/.local/bin:/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$(id -u tally)" \
+  bash "$REL/deploy/release.sh" "$REL"
 note "first release checked: see /status.txt"
+
+if [ -f /etc/tally/first-user ]; then
+  { read -r NAME; read -r PASSWORD; } < /etc/tally/first-user
+  printf '%s\n' "$PASSWORD" | runuser -u tally -- "$REL/.venv/bin/python" -m tally.web adduser /var/lib/tally/data "$NAME"
+  shred -u /etc/tally/first-user
+  unset PASSWORD
+  note "$NAME can sign in"
+fi
