@@ -11,6 +11,9 @@ dependencies = [
   "pypdfium2>=4.30",
   "pypdf>=5.0",
   "pillow>=10.0",
+  # The web app (Flask, BSD-3-Clause) and the server it runs under on the host (gunicorn, MIT).
+  "flask>=3.0",
+  "gunicorn>=22.0",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +26,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["tally*"]
+
+[tool.setuptools.package-data]
+"tally.web" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
