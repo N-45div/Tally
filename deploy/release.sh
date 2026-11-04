@@ -58,7 +58,9 @@ EOF
   step "python";  python3 --version
   step "install"; python3 -m venv "$REL/.venv" && "$REL/.venv/bin/pip" install -q -e "${REL}[dev]" && echo ok
   step "microsandbox"; msb --version; msb doctor; echo "msb doctor exit $?"
-  echo "-- the options msb create offers, for the record:"; msb create --help 2>&1 | head -80
+  echo "-- options of msb create and msb exec about disk, mounts and limits, for the record:"
+  msb create --help 2>&1 | grep -iE -A2 "disk|size|tmpfs|rootfs|volume|mount|limit|overlay|read-only|readonly|quota"
+  msb exec --help 2>&1 | grep -iE -A3 "rlimit|limit"
   cd "$REL"
   step "guest files"; .venv/bin/python -m tally.sandbox prepare
   step "sandbox doctor"; .venv/bin/python -m tally.sandbox doctor; echo "exit $?"
