@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Vendors{% endblock %}
+{% block main %}
+<h1>Vendors</h1>
+<p class="quiet">Payment always goes to the bank details on file here, never to an account printed on an invoice.</p>
+<table>
+  <thead><tr><th>Name</th><th>Also known as</th><th>Bank details on file</th><th>Phone on file</th><th></th></tr></thead>
+  <tbody>
+  {% for v in vendors %}
+    <tr>
+      <td>{{ v.name }}</td>
+      <td>{{ v.aliases | join("; ") }}</td>
+      <td>{% for k, x in v.bank.items() if x %}{{ k | replace("_", " ") }} {{ x }}<br>{% else %}<span class="quiet">none</span>{% endfor %}</td>
+      <td>{{ v.phone }}</td>
+      <td>
+        <details><summary>Change bank details</summary>
+          <form method="post" action="{{ url_for('vendor_bank', vendor_id=v.id) }}" class="stack">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <label>IBAN <input name="iban"></label>
+            <label>Account number <input name="account_number"></label>
+            <label>Sort code <input name="sort_code"></label>
+            <label>Routing number <input name="routing_number"></label>
+            <label>How was this confirmed? <input name="how_confirmed" required placeholder="e.g. phoned {{ v.phone or 'the number on file' }}, spoke to …"></label>
+            <button>Change</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="quiet">No vendors yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<h2>Add a vendor</h2>
+<form method="post" class="stack narrow">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Name, as printed on their invoices <input name="name" required></label>
+  <label>Other names they print (separate with ;) <input name="aliases"></label>
+  <label>IBAN <input name="iban"></label>
+  <label>Account number <input name="account_number"></label>
+  <label>Sort code <input name="sort_code"></label>
+  <label>Routing number <input name="routing_number"></label>
+  <label>Phone number to confirm changes on <input name="phone"></label>
+  <button>Add vendor</button>
+</form>
+{% endblock %}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% block head %}{% endblock %}
+  <title>{% block title %}Tally{% endblock %} · Tally</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='tally.css') }}">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="{{ url_for('queue') }}">Tally</a>
+    {% if user %}
+    <nav>
+      <a href="{{ url_for('queue') }}">Invoices</a>
+      <a href="{{ url_for('vendors') }}">Vendors</a>
+      <a href="{{ url_for('pos') }}">Purchase orders</a>
+      <a href="{{ url_for('ledger_page') }}">Ledger</a>
+    </nav>
+    <form method="post" action="{{ url_for('logout') }}" class="logout">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <span>{{ user }}</span> <button class="link">Sign out</button>
+    </form>
+    {% endif %}
+  </header>
+  <main>
+    {% for message in get_flashed_messages() %}<p class="flash">{{ message }}</p>{% endfor %}
+    {% block main %}{% endblock %}
+  </main>
+</body>
+</html>

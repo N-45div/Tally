@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% set labels = {"queued": "Waiting", "processing": "Opening", "held": "Held", "ready": "Ready to approve",
+                 "approved": "Approved", "rejected": "Rejected", "failed": "Failed"} %}
+{% block head %}{% if inv.status in ["queued", "processing"] %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block title %}Invoice {{ inv.id }}{% endblock %}
+{% block main %}
+{% set decision = inv.decision or {} %}
+{% set facts = decision.get("facts") or {} %}
+{% set first = (inv.reading or {}).get("fields") or {} %}
+{% set second = (inv.check_reading or {}).get("fields") or {} %}
+<h1>Invoice {{ inv.id }} <span class="status {{ inv.status }}">{{ labels[inv.status] }}</span></h1>
+<p class="quiet">{{ inv.filename }} · uploaded by {{ inv.uploaded_by }} at {{ inv.uploaded_at }} · SHA-256 {{ inv.sha256[:16] }}…</p>
+
+{% if inv.status in ["queued", "processing"] %}
+  <p>Opening the file in a sandbox and reading it. This page refreshes by itself.</p>
+{% elif inv.status == "failed" %}
+  <p class="hold">This invoice could not be processed: {{ inv.note }}</p>
+{% endif %}
+
+{% if decision %}
+<section class="decision {{ 'ready' if decision.ready else 'held' }}">
+  {% if inv.status == "approved" %}
+    <h2>Approved by {{ inv.decided_by }}</h2>
+    <p>For payment of {{ inv.currency }} {{ inv.total_cents | money }} to {{ vendor.name }}, to the account on file.{% if inv.note %} Note: {{ inv.note }}{% endif %}</p>
+  {% elif inv.status == "rejected" %}
+    <h2>Rejected by {{ inv.decided_by }}</h2><p>{{ inv.note }}</p>
+  {% elif decision.ready %}
+    <h2>Ready to approve</h2>
+    <p>Every check passed. Approving it records payment of <strong>{{ inv.currency }} {{ inv.total_cents | money }}</strong>
+       to <strong>{{ vendor.name }}</strong>, to the account on file
+       ({% for k, v in vendor.bank.items() if v %}{{ k | replace("_", " ") }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}).
+       The checks run again at the moment of approval.</p>
+  {% else %}
+    <h2>Held</h2>
+    <ul>{% for h in decision.holds %}<li>{{ h.text }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if inv.status in ["held", "ready"] %}
+  <div class="actions">
+    {% if decision.ready %}
+    <form method="post" action="{{ url_for('decide', invoice_id=inv.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="decision" value="approve">
+      <input name="note" placeholder="Note (optional)"> <button>Approve</button>
+    </form>
+    {% endif %}
+    <form method="post" action="{{ url_for('decide', invoice_id=inv.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="decision" value="reject">
+      <input name="note" placeholder="Why it is rejected" required> <button class="secondary">Reject</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+
+<h2>Checks</h2>
+<ul class="checks">
+  {% for c in decision.checks %}<li class="{{ 'ok' if c.ok else 'no' }}"><span aria-hidden="true">{{ "✓" if c.ok else "✗" }}</span> {{ c.text }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+{% if inv.reading %}
+<h2>What was read</h2>
+<p class="quiet">Copied from the page images only, never from the file's text layer.</p>
+<table class="fields">
+  <thead><tr><th>Field</th><th>{{ inv.reading.model }}</th><th>{{ (inv.check_reading or {}).get("model", "second reading") }}</th></tr></thead>
+  <tbody>
+  {% for name in ["vendor_name", "vendor_address", "bill_to", "invoice_number", "invoice_date", "due_date", "po_number", "currency", "subtotal", "tax", "total"] %}
+    <tr class="{{ 'differ' if second and first.get(name) != second.get(name) }}"><th>{{ name | replace("_", " ") }}</th><td>{{ first.get(name) | amount }}</td><td>{{ second.get(name) | amount }}</td></tr>
+  {% endfor %}
+  {% for name in ["account_name", "iban", "account_number", "sort_code", "routing_number", "swift_bic"] %}
+    {% set a = (first.get("pay_to") or {}).get(name) %}{% set b = (second.get("pay_to") or {}).get(name) %}
+    {% if a or b %}<tr class="{{ 'differ' if second and a != b }}"><th>pay to: {{ name | replace("_", " ") }}</th><td>{{ a }}</td><td>{{ b }}</td></tr>{% endif %}
+  {% endfor %}
+  </tbody>
+</table>
+{% if first.get("lines") %}
+<table>
+  <thead><tr><th>Line</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr></thead>
+  <tbody>{% for l in first.lines %}<tr><td>{{ l.description }}</td><td class="num">{{ l.quantity }}</td><td class="num">{{ l.unit_price | amount }}</td><td class="num">{{ l.amount | amount }}</td></tr>{% endfor %}</tbody>
+</table>
+{% endif %}
+<p class="quiet">Reading cost: ${{ "%.4f" | format((inv.reading.usd or 0) + ((inv.check_reading or {}).get("usd") or 0)) }}.</p>
+{% endif %}
+
+{% if inv.airlock %}
+<h2>The file</h2>
+{% set a = inv.airlock %}
+<p>{{ a.pages }} page(s), {{ a.bytes }} bytes. Opened in {{ a.sandbox.backend or "no sandbox" }}{% if a.sandbox.network %} with network {{ a.sandbox.network }}{% endif %}.</p>
+{% if a.hidden %}
+  <h3>Hidden text found in the file</h3>
+  <p class="quiet">A person cannot see this text on the page. It is quoted here so you know what the file tried to say; it never reached the model.</p>
+  {% for h in a.hidden %}<blockquote><span class="quiet">Page {{ h.page }}, {{ h.reason }}:</span> {{ h.text }}</blockquote>{% endfor %}
+{% endif %}
+{% if a.active %}
+  <h3>Active content</h3>
+  <ul>{% for x in a.active %}<li>{{ x.what }} ({{ x.where }}){% if x.severity == "hold" %}: holds the invoice{% endif %}</li>{% endfor %}</ul>
+{% endif %}
+{% for p in a.problems %}<p class="hold">{{ p }}</p>{% endfor %}
+<div class="pages">{% for name in a.images %}<img src="{{ url_for('page_image', invoice_id=inv.id, name=name) }}" alt="Page {{ loop.index }} of the invoice">{% endfor %}</div>
+{% endif %}
+
+<h2>Ledger</h2>
+<table class="ledger">
+  <tbody>{% for e in entries %}<tr><td>{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td><td class="quiet">{{ e.hash[:12] }}</td></tr>{% endfor %}</tbody>
+</table>
+{% endblock %}

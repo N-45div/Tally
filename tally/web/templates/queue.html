@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% set labels = {"queued": "Waiting", "processing": "Opening", "held": "Held", "ready": "Ready to approve",
+                 "approved": "Approved", "rejected": "Rejected", "failed": "Failed"} %}
+{% block head %}{% if invoices | selectattr("status", "in", ["queued", "processing"]) | list %}<meta http-equiv="refresh" content="4">{% endif %}{% endblock %}
+{% block title %}Invoices{% endblock %}
+{% block main %}
+<h1>Invoices</h1>
+<form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="upload">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Add invoices (PDF) <input type="file" name="files" accept="application/pdf" multiple required></label>
+  <button>Upload</button>
+  <p class="quiet">Each file is opened in its own sandbox with no network. Nothing is paid until a person approves it.</p>
+</form>
+{% if invoices %}
+<table>
+  <thead><tr><th>#</th><th>File</th><th>Vendor</th><th class="num">Total</th><th>Status</th><th>Why</th></tr></thead>
+  <tbody>
+  {% for inv in invoices %}
+    {% set fields = (inv.reading or {}).get("fields") or {} %}
+    <tr>
+      <td><a href="{{ url_for('invoice', invoice_id=inv.id) }}">{{ inv.id }}</a></td>
+      <td><a href="{{ url_for('invoice', invoice_id=inv.id) }}">{{ inv.filename }}</a></td>
+      <td>{{ (inv.decision or {}).get("facts", {}).get("vendor_name") or fields.get("vendor_name") or "" }}</td>
+      <td class="num">{% if inv.total_cents is not none %}{{ inv.currency }} {{ inv.total_cents | money }}{% endif %}</td>
+      <td><span class="status {{ inv.status }}">{{ labels[inv.status] }}</span></td>
+      <td class="why">{% if inv.decision and inv.decision.holds %}{{ inv.decision.holds[0].text }}{% if inv.decision.holds | length > 1 %} (+{{ inv.decision.holds | length - 1 }} more){% endif %}{% elif inv.status == "failed" %}{{ inv.note }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="quiet">No invoices yet.</p>
+{% endif %}
+{% endblock %}

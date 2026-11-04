@@ -1,0 +1,51 @@
+:root {
+  --bg: #fbfaf8; --fg: #1d1d1b; --quiet: #6b6a66; --line: #e4e1db; --card: #ffffff;
+  --ok: #1f7a4d; --ok-bg: #e9f5ee; --hold: #a3361f; --hold-bg: #fbece8; --accent: #2b4c7e;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161615; --fg: #ecebe8; --quiet: #a29f99; --line: #34332f; --card: #1f1f1d;
+          --ok: #6fcf9a; --ok-bg: #17291f; --hold: #f08a72; --hold-bg: #35201b; --accent: #8fb0e3; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+.brand { font-weight: 700; text-decoration: none; color: var(--fg); }
+.top nav { display: flex; flex-wrap: wrap; gap: 16px; flex: 1; }
+.logout { display: flex; gap: 8px; align-items: center; color: var(--quiet); }
+@media (max-width: 640px) {
+  .top nav { order: 3; flex-basis: 100%; }
+  .logout { margin-left: auto; }
+}
+h1 { font-size: 1.5rem; margin: 8px 0 12px; } h2 { font-size: 1.15rem; margin: 28px 0 8px; } h3 { font-size: 1rem; margin: 16px 0 6px; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; display: block; overflow-x: auto; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th { font-weight: 600; color: var(--quiet); font-size: 0.85rem; }
+.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.quiet { color: var(--quiet); }
+.why { max-width: 420px; }
+.flash { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 8px 12px; }
+.status { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: 600; border: 1px solid var(--line); white-space: nowrap; }
+.status.ready, .status.approved { color: var(--ok); background: var(--ok-bg); border-color: transparent; }
+.status.held, .status.failed, .status.rejected { color: var(--hold); background: var(--hold-bg); border-color: transparent; }
+.decision { border-radius: 8px; padding: 4px 16px 12px; margin: 12px 0; border: 1px solid var(--line); background: var(--card); }
+.decision.ready { border-left: 5px solid var(--ok); } .decision.held { border-left: 5px solid var(--hold); }
+.hold { color: var(--hold); } .okline { color: var(--ok); }
+.checks { list-style: none; padding: 0; } .checks li { padding: 4px 0; }
+.checks li.ok span { color: var(--ok); font-weight: 700; } .checks li.no span { color: var(--hold); font-weight: 700; }
+.fields tr.differ td { background: var(--hold-bg); }
+blockquote { margin: 8px 0; padding: 8px 12px; border-left: 4px solid var(--hold); background: var(--hold-bg); overflow-wrap: anywhere; }
+.pages img { display: block; width: 100%; max-width: 640px; border: 1px solid var(--line); margin: 8px 0; background: #fff; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0; }
+.actions form, .upload { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.upload { padding: 12px; border: 1px dashed var(--line); border-radius: 8px; background: var(--card); }
+.upload p { flex-basis: 100%; margin: 0; }
+.stack { display: grid; gap: 8px; } .stack label { display: grid; gap: 2px; }
+.narrow { max-width: 420px; }
+input, select, button { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+button { background: var(--accent); color: #fff; border-color: transparent; cursor: pointer; }
+button.secondary { background: transparent; color: var(--fg); border-color: var(--line); }
+button.link { background: none; color: var(--accent); padding: 0; border: 0; text-decoration: underline; }
+.ledger .detail { font-family: ui-monospace, monospace; font-size: 0.8rem; overflow-wrap: anywhere; max-width: 480px; }
+details summary { cursor: pointer; color: var(--accent); }

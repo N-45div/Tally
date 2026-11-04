@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Ledger{% endblock %}
+{% block main %}
+<h1>Ledger</h1>
+<p class="{{ 'okline' if ok else 'hold' }}">{{ "The chain is intact" if ok else "The chain is broken" }}: {{ what }}.</p>
+<p class="quiet">Every entry carries the hash of the one before it, so an entry changed or removed later breaks the chain from there on.</p>
+<table class="ledger">
+  <thead><tr><th>#</th><th>When</th><th>Who</th><th>What</th><th>Invoice</th><th>Detail</th><th>Hash</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr>
+      <td>{{ e.seq }}</td><td>{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td>
+      <td>{% if e.invoice_id %}<a href="{{ url_for('invoice', invoice_id=e.invoice_id) }}">{{ e.invoice_id }}</a>{% endif %}</td>
+      <td class="detail">{{ e.detail | tojson }}</td><td class="quiet">{{ e.hash[:12] }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
