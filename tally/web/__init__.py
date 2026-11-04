@@ -102,6 +102,22 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True) -> 
         session.clear()
         return redirect(url_for("login"))
 
+    @app.route("/account", methods=["GET", "POST"])
+    @login_required
+    def account():
+        if request.method == "POST":
+            f = request.form
+            if f.get("new", "") != f.get("again", ""):
+                flash("The two new passwords are not the same.")
+            else:
+                try:
+                    store().change_password(user(), f.get("current", ""), f.get("new", ""))
+                    flash("Password changed.")
+                except ValueError as e:
+                    flash(str(e).capitalize() + ".")
+            return redirect(url_for("account"))
+        return render_template("account.html")
+
     @app.get("/")
     @login_required
     def queue():

@@ -147,3 +147,13 @@ def test_check_again_after_the_purchase_order_is_added(app):
     s.add_po("setup", "PO-55121", 1, "GBP", 300000)  # a new order; the invoice still names the closed one
     r = c.post(f"/invoices/{iid}/check-again", data={"csrf": csrf(c)}, follow_redirects=True)
     assert b"still held" in r.data and b"is closed" in r.data
+
+
+def test_a_person_can_change_their_password(app):
+    c = signed_in(app)
+    token = csrf(c)
+    r = c.post("/account", data={"csrf": token, "current": PASSWORD, "new": "another long password", "again": "different"}, follow_redirects=True)
+    assert b"not the same" in r.data
+    r = c.post("/account", data={"csrf": token, "current": PASSWORD, "new": "another long password", "again": "another long password"},
+               follow_redirects=True)
+    assert b"Password changed" in r.data and app.store.check_password("carol", "another long password")
