@@ -205,6 +205,14 @@ class Store:
                              "(SELECT id FROM invoices WHERE status = 'queued' ORDER BY id LIMIT 1) RETURNING id").fetchone()
         return row[0] if row else None
 
+    def requeue_unfinished(self, actor: str) -> list[int]:
+        """Invoices a stopped worker left half-done go back in the queue."""
+        with self.tx() as db:
+            ids = [r[0] for r in db.execute("UPDATE invoices SET status = 'queued' WHERE status = 'processing' RETURNING id")]
+            for iid in ids:
+                ledger.append(db, actor, "requeued", {"why": "the worker stopped before finishing it"}, iid)
+        return ids
+
     def save_result(self, actor: str, invoice_id: int, *, airlock: dict, reading: dict | None, check_reading: dict | None, decision: dict) -> None:
         f = decision["facts"]
         with self.tx() as db:
