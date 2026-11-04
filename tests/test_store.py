@@ -92,3 +92,15 @@ def test_passwords(store):
     assert not store.check_password("dave", "correct horse batterY")
     assert not store.check_password("nobody", "correct horse battery")
     assert "correct horse" not in str(ledger.entries(store.db))
+
+
+def test_a_held_invoice_can_be_checked_again_without_reading_it_again(store):
+    iid = store.add_invoice("bob", "a.pdf", b"%PDF a")
+    store.claim_next()
+    store.save_result("worker", iid, airlock={}, reading={"x": 1}, check_reading={}, decision=_decision(False))
+    after = store.check_again("carol", iid, recheck=lambda inv: _decision(True, store.vid, store.pid))
+    assert after["status"] == "ready" and after["reading"] == {"x": 1} and after["po_id"] == store.pid
+    assert ledger.entries(store.db, iid)[-1]["kind"] == "checked again"
+    store.decide("carol", iid, False, "not ours", recheck=None)
+    with pytest.raises(ValueError, match="rejected"):
+        store.check_again("carol", iid, recheck=lambda inv: _decision(True))

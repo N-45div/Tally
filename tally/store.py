@@ -222,6 +222,22 @@ class Store:
                         json.dumps(decision), f["vendor_id"], f["po_id"], f["invoice_number_key"], f["total_cents"], f["currency"], invoice_id))
             ledger.append(db, actor, "checked", {"ready": decision["ready"], "holds": [h["code"] for h in decision["holds"]]}, invoice_id)
 
+    def check_again(self, actor: str, invoice_id: int, recheck: Callable[[dict], dict]) -> dict:
+        """Re-run the checks on a held or ready invoice, on what was already read, against the records as they are
+        now (a purchase order added since, say). Nothing is read again. Returns the invoice as it ends up."""
+        with self.tx() as db:
+            inv = self.invoice(invoice_id)
+            if inv is None:
+                raise KeyError(f"no invoice {invoice_id}")
+            if inv["status"] not in ("held", "ready"):
+                raise ValueError(f"an invoice that is {inv['status']} is not checked again")
+            fresh = recheck(inv)
+            f = fresh["facts"]
+            db.execute("UPDATE invoices SET status = ?, decision = ?, vendor_id = ?, po_id = ? WHERE id = ?",
+                       ("ready" if fresh["ready"] else "held", json.dumps(fresh), f["vendor_id"], f["po_id"], invoice_id))
+            ledger.append(db, actor, "checked again", {"ready": fresh["ready"], "holds": [h["code"] for h in fresh["holds"]]}, invoice_id)
+        return self.invoice(invoice_id)
+
     def fail(self, actor: str, invoice_id: int, why: str) -> None:
         with self.tx() as db:
             db.execute("UPDATE invoices SET status = 'failed', note = ? WHERE id = ?", (why[:500], invoice_id))
