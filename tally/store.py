@@ -310,6 +310,16 @@ class Store:
             db.execute("INSERT INTO users (name, salt, hash, added_at) VALUES (?, ?, ?, ?)", (name, salt, _password_hash(password, salt), _now()))
             ledger.append(db, actor, "user added", {"name": name})
 
+    def change_password(self, name: str, current: str, new: str) -> None:
+        if not self.check_password(name, current):
+            raise ValueError("the current password is not right")
+        if len(new) < 12:
+            raise ValueError("use a password of at least 12 characters")
+        salt = os.urandom(16)
+        with self.tx() as db:
+            db.execute("UPDATE users SET salt = ?, hash = ? WHERE name = ?", (salt, _password_hash(new, salt), name))
+            ledger.append(db, name, "password changed", {"name": name})
+
     def check_password(self, name: str, password: str) -> bool:
         row = self.db.execute("SELECT salt, hash FROM users WHERE name = ?", (name,)).fetchone()
         if row is None:

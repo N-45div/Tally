@@ -112,3 +112,14 @@ def test_a_held_invoice_can_be_checked_again_without_reading_it_again(store):
     store.decide("carol", iid, False, "not ours", recheck=None)
     with pytest.raises(ValueError, match="rejected"):
         store.check_again("carol", iid, recheck=lambda inv: _decision(True))
+
+
+def test_a_password_is_changed_only_with_the_current_one(store):
+    store.add_user("alice", "dave", "correct horse battery")
+    with pytest.raises(ValueError, match="not right"):
+        store.change_password("dave", "wrong", "a new long password")
+    with pytest.raises(ValueError, match="12"):
+        store.change_password("dave", "correct horse battery", "short")
+    store.change_password("dave", "correct horse battery", "a new long password")
+    assert store.check_password("dave", "a new long password") and not store.check_password("dave", "correct horse battery")
+    assert ledger.entries(store.db)[-1]["kind"] == "password changed" and "long password" not in str(ledger.entries(store.db))
