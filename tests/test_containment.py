@@ -54,3 +54,13 @@ def test_a_guest_that_writes_too_much_is_stopped_and_its_writing_deleted(tmp_pat
     ran = sandbox.run_in_guest(["python", "-c", code], [(tmp_path / "out", "/out", False)])
     assert ran is not None and ran.returncode == -1 and ran.stderr.startswith("stopped: wrote"), ran
     assert list((tmp_path / "out").iterdir()) == [] and time.monotonic() - started < 30
+
+
+def test_the_guest_cannot_fill_its_own_disk_past_its_size():
+    import json
+    code = ("import json\nchunk = b'x' * (1 << 20)\nn, error = 0, ''\ntry:\n    with open('/tmp/fill', 'wb') as f:\n"
+            "        while n < 2048 << 20:\n            f.write(chunk); f.flush(); n += len(chunk)\n"
+            "except OSError as e:\n    error = type(e).__name__\nprint(json.dumps({'wrote_mb': n >> 20, 'error': error}))")
+    ran = sandbox.run_in_guest(["python", "-c", code], [])
+    seen = json.loads(ran.stdout.strip().splitlines()[-1])
+    assert seen["error"] and seen["wrote_mb"] < 512, seen  # stopped by the size of its disk, not by the 2 GB the code wanted

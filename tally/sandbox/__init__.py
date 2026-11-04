@@ -37,6 +37,10 @@ GUEST_ENV = ("-e", "PYTHONPATH=/opt/tally:/opt/tally/site", "-e", "PYTHONDONTWRI
 # that writes more is stopped while it runs (the lab measured 2 GB reaching the host in 6 seconds before this).
 OUT_LIMIT = MAX_PAGES * MAX_PNG_BYTES + MAX_REPORT_BYTES
 WATCH_SECONDS = 0.2
+# Microsandbox enforces sizes too: a quota on each writable folder, and a fixed-size disk for the guest itself (the
+# airlock writes nothing there; Python's own files are about 130 MB of it).
+QUOTA = f"{-(-OUT_LIMIT // 2 ** 20)}M"
+ROOT_DISK = "512M"
 
 
 class SandboxUnavailable(RuntimeError):
@@ -137,10 +141,10 @@ def run_in_guest(argv: list[str], mounts: list[tuple[Path, str, bool]]) -> subpr
     name = f"tally-{uuid.uuid4().hex[:16]}"
     volumes = ["-v", f"{GUEST_ROOT}:/opt/tally:ro"]
     for host, guest, read_only in mounts:
-        volumes += ["-v", f"{host}:{guest}" + (":ro" if read_only else "")]
+        volumes += ["-v", f"{host}:{guest}:ro"] if read_only else ["--mount-dir", f"{host}:{guest}:quota={QUOTA}"]
     try:
         made = _msb("create", "--name", name, "--no-net", "--cpus", str(CPUS), "--memory", MEMORY,
-                    "--max-duration", f"{TIME_LIMIT_S + 30}s", *volumes, *GUEST_ENV, IMAGE, timeout=180)
+                    "--max-duration", f"{TIME_LIMIT_S + 30}s", "--root-disk", ROOT_DISK, *volumes, *GUEST_ENV, IMAGE, timeout=180)
         if made.returncode != 0:
             raise SandboxUnavailable("msb create failed: " + (made.stdout + made.stderr).strip()[-500:])
         return _exec_watched(name, argv, [host for host, _, read_only in mounts if not read_only])
