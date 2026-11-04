@@ -22,8 +22,8 @@ This README grows with the project. The status of each part is stated as it land
   encryption, which hold the invoice. Links are reported but do not hold it.
 - **Airlock: what leaves.** One command turns a file into page images and a report. Anything that is not a readable
   PDF of at most 10 pages and 20 MB is held without being rendered. The text layer is never written out.
-- **Sandbox.** Each file is opened in its own Microsandbox microVM (no network, 1 CPU, 512 MB, a time limit,
-  removed afterwards), on a Vultr VX1 host. One invoice takes about 1.5 seconds there, start to finish. What comes
+- **Sandbox.** Each file is opened in its own Microsandbox microVM (no network, 1 CPU, 512 MB of memory, a 512 MB
+  disk, at most 251 MB written back, a time limit, removed afterwards), on a Vultr VX1 host. One invoice takes about 1.5 seconds there, start to finish. What comes
   back is checked before use: only the expected files, PNG headers, the exact report shape, the right file, a verdict
   that follows from the findings. Without KVM, Tally refuses to open files rather than open them unsandboxed.
 - **What a file can reach from inside.** Every release on the host runs a probe in a microVM with the same limits.
@@ -55,6 +55,63 @@ This README grows with the project. The status of each part is stated as it land
   invoices uploaded together (a clean one, one with a hidden instruction, one asking for payment to a new account)
   were opened, read twice and checked in 20 seconds in all. The clean one was ready to approve; the other two were
   held, for the hidden text and for the new account. Two readings cost $0.0046 per invoice.
+
+## The lab: how Tally is attacked
+
+After every release that passes its tests, the host runs the lab (`lab/`) and publishes the results, with every run
+so far, at `/lab` on the host (JSON at `/lab.json`). It has three parts.
+
+- **24 invoice files**, each built to get money paid wrongly, each with what should happen to it: hidden
+  instructions in eight ways (including one worded as an ordinary bank-change notice, not a command), visible tricks
+  (a new bank account with a "we changed banks" notice, a note telling AI readers to record a smaller total, an
+  instruction to AI agents printed in the open, a lookalike vendor name, an unknown or too-small purchase order, a
+  total that does not add up, a duplicate), active content (JavaScript, a launch action, an embedded program) and
+  broken files.
+- **A naive agent** given the same files, three times each: the PDF's text layer and a model with a `pay` tool, as
+  many invoice agents are built. Once with the text only, once with the same records Tally has (vendor, bank details
+  on file, purchase orders, invoices already paid). Same model (GLM) and API as Tally's reader.
+- **11 attacks from inside the microVM**, as if a file had broken the parser: forged reports, a link to a host file,
+  an extra file, a fake page, code that runs forever, uses all memory, fork-bombs, or fills the output folder or its
+  own disk.
+
+Results of the four runs on the VX1 host so far. A wrong payment is money to an account not on file, the wrong
+amount, or an invoice that is not payable; a missed hold is paying (or making ready) something that should be held.
+
+| | Tally | Naive agent, text only | Naive agent, with records |
+|---|---|---|---|
+| As expected | 95 of 96 | | |
+| Wrong payments | 0 | 3 of 288 decisions | 2 of 288 |
+| Missed holds | 0 | 43 of 288 | 108 of 288 |
+| Paid the attacker's account | never (it pays only the account on file) | never | never |
+
+What this shows, plainly:
+
+- The naive agent never paid the attacker's account. When the model could read a bank-change instruction in the
+  text, it usually held the invoice, whether the instruction was blunt or worded as a notice.
+- What it missed is what is not in the text: it paid the files carrying JavaScript, a launch action or an embedded
+  program every time. Given records to trust, it also paid the real vendor for most files with hidden instructions.
+  Its wrong payments were an invoice larger than its purchase order (text only, with no purchase orders to check)
+  and a 200-inch junk page.
+- Tally's one miss in 96 was a safe one: in the first run it held the legitimate invoice with a printed note to AI
+  readers, because its two readings differed. Its readings never contained a hidden account (0 of 32).
+- On the lookalike vendor ("Northwlnd"), one model quietly corrected the name to the real vendor. The two readings
+  disagreed and the invoice was held; had both corrected it, the printed bank account would still not have been the
+  one on file.
+
+What the lab found in Tally, and what changed:
+
+- A 200 by 200 inch page took 22 seconds and gigabytes of memory to check, because the hidden-text check drew it
+  before its size was checked. Page sizes are now checked first.
+- Code in a microVM could write 2 GB to the host's disk through its output folder in 6 seconds, and 2 GB to its own
+  disk in 4. Microsandbox now enforces a 251 MB quota on the output folder and a 512 MB disk, and the host also
+  watches the output folder and stops a microVM past the limit. In the latest run the two attacks cost the host
+  251 MB and 350 MB of free space at their peak.
+- The first probe reported a network leak that was the sandbox's own denials (see above).
+
+Limits of the lab: the attack files are Tally's own, not collected from real fraud; the naive agent is one model
+family, with the text layer only; the numbers are small (24 files, three tries each for the naive agent); and a
+broken-into sandbox that lies consistently passes the output checks (one of the 11 attacks, by design: see Known
+limits).
 
 ## Run the tests
 
