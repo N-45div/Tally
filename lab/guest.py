@@ -3,7 +3,8 @@
 Each attack runs hostile code in a fresh microVM, with the limits and mounts every invoice gets (/opt/tally read-only,
 the invoice at /in read-only, /out writable), in place of the airlock. Then the host does what it always does with a
 microVM's output: checks it (tally.sandbox.check). An attack is contained when its output is refused, nothing of it
-is left running, and no more than HOST_BYTES_OK of what it wrote reached the host's disk.
+is left running, and the host's disk lost no more than HOST_BYTES_OK of free space at any point while it ran (free
+space is sampled every half second, so writing to the guest's own disk counts too, not only to /out).
 
 The disk attack stops itself at 2 GB, so the lab measures whether anything limits it without filling the host.
 """
@@ -13,6 +14,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -21,7 +23,7 @@ from tally.airlock.inspect import inspect
 from tally.sandbox.check import BadOutput, check_output
 
 DISK_CAP = 2 * 1024 ** 3
-HOST_BYTES_OK = 100 * 1024 ** 2
+HOST_BYTES_OK = sandbox.OUT_LIMIT + 100 * 1024 ** 2  # what a real run may write, and a margin for sampling
 
 # Code the attacker runs in the guest. The real invoice is /in/invoice.pdf; /in/page.png is a real page of it,
 # for the attacks that hand back a forged but plausible result.
@@ -51,16 +53,35 @@ ATTACKS = [
     ("runs forever", "Code that never finishes.", "import time; time.sleep(3600)"),
     ("uses all memory", "Code that asks for 2 GB.", "b = b'x' * (2 * 1024 ** 3); print(len(b))"),
     ("fork bomb", "Code that starts processes until something gives.", "import os\nwhile True:\n    os.fork()"),
-    ("fills the disk", "Code that writes to /out and to its own disk, up to 2 GB each.",
-     f"import os, time\nstarted = time.time()\nchunk = b'\\0' * (1 << 20)\nresult = {{}}\n"
-     f"for path in ('/out/fill', '/tmp/fill'):\n    n = 0\n    try:\n        with open(path, 'wb') as f:\n"
-     f"            while n < {DISK_CAP} and time.time() - started < 50:\n                f.write(chunk); n += len(chunk)\n"
-     f"    except OSError as e:\n        result[path + ' error'] = type(e).__name__\n    result[path] = n\nprint(result)"),
+    *[(f"fills {where}", f"Code that writes to {path} until 2 GB or 50 seconds.",
+       f"import time\nstarted = time.time()\nchunk = b'x' * (1 << 20)\nn = 0\nerror = ''\ntry:\n"
+       f"    with open('{path}', 'wb') as f:\n        while n < {DISK_CAP} and time.time() - started < 50:\n"
+       f"            f.write(chunk); f.flush(); n += len(chunk)\nexcept OSError as e:\n    error = type(e).__name__\n"
+       f"print({{'wrote_mb': n >> 20, 'error': error, 'seconds': round(time.time() - started, 1)}})")
+      for where, path in (("its output folder", "/out/fill"), ("its own disk", "/tmp/fill"))],
 ]
 
 
 def _du(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file() and not p.is_symlink())
+
+
+class _DiskWatch:
+    """The most free space the host's disk lost, compared with before, while a microVM ran."""
+
+    def __init__(self, path: Path):
+        self.path, self.before, self.lost, self._stop = path, shutil.disk_usage(path).free, 0, threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        while not self._stop.wait(0.5):
+            self.lost = max(self.lost, self.before - shutil.disk_usage(self.path).free)
+
+    def stop(self) -> int:
+        self._stop.set()
+        self._thread.join()
+        return max(self.lost, 0)
 
 
 def _leftovers() -> list[str]:
@@ -81,8 +102,10 @@ def run(hidden_pdf: Path, work_dir: Path | None = None) -> list[dict]:
             inspect(hidden_pdf, job / "preview")  # a real page of the file, for the forgeries; built here, by the lab
             shutil.copy(job / "preview" / "page-1.png", job / "in" / "page.png")
             started = time.monotonic()
+            watch = _DiskWatch(job)
             ran = sandbox.run_in_guest(["python", "-c", code], [(job / "in", "/in", True), (job / "out", "/out", False)])
             seconds = time.monotonic() - started
+            lost = watch.stop()
             landed = _du(job / "out")
             try:
                 check_output(job / "out", data)
@@ -93,8 +116,9 @@ def run(hidden_pdf: Path, work_dir: Path | None = None) -> list[dict]:
             outcome = ("timed out" if ran is None else ran.stderr if ran.returncode == -1 else f"exited {ran.returncode}") + f" after {seconds:.1f} s"
             results.append({
                 "name": name, "what": what, "outcome": outcome, "checks": checked, "bytes_on_host": landed,
+                "host_disk_lost_at_peak": lost,
                 "guest_said": (ran.stdout.strip()[-300:] if ran else ""), "left_running": left,
-                "contained": checked.startswith("refused") and not left and landed <= HOST_BYTES_OK,
+                "contained": checked.startswith("refused") and not left and landed <= HOST_BYTES_OK and lost <= HOST_BYTES_OK,
             })
         finally:
             shutil.rmtree(job, ignore_errors=True)
