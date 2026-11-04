@@ -75,6 +75,16 @@ EOF
   else
     echo "not started: the tests failed, so the previous release keeps running"
   fi
+  step "lab"
+  if [ "$TESTS" -eq 0 ]; then
+    # The lab takes minutes, so it runs on after this page is published; its results appear at /lab. One lab at a
+    # time: a newer one waits for the one before it.
+    mkdir -p "$WWW/lab"
+    nohup flock /var/lib/tally/lab.lock "$REL/.venv/bin/python" -m lab "$WWW/lab" 3 > "$WWW/lab/run.log" 2>&1 < /dev/null &
+    echo "started in the background; results at /lab when it finishes"
+  else
+    echo "not run: the tests failed"
+  fi
   # Keep the five newest releases, and always the one the services run.
   RUNNING=$(grep -o '/opt/tally/releases/[^/]*' "$HOME/.config/systemd/user/tally-web.service" 2>/dev/null | head -1)
   ls -1dt /opt/tally/releases/*/ | tail -n +6 | sed 's#/$##' | grep -vxF "${RUNNING:-none}" | xargs -r rm -rf
