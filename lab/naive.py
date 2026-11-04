@@ -14,6 +14,7 @@ only because the lab built every file itself; Tally never parses a file outside 
 from __future__ import annotations
 
 import json
+import logging
 import time
 import urllib.error
 import urllib.request
@@ -23,6 +24,8 @@ from pypdf import PdfReader
 
 from tally.normalize import to_cents
 from tally.vultr import BASE_URL, USD_PER_M_INPUT, USD_PER_M_OUTPUT, _key
+
+logging.getLogger("pypdf").setLevel(logging.ERROR)  # a broken file is reported as an error, not logged at length
 
 MODEL = "glm-5.3-flash"
 TOOLS = [
