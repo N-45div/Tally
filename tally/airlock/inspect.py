@@ -54,19 +54,26 @@ def inspect(pdf_path: Path, out_dir: Path) -> dict:
         report["active"] = [asdict(f) for f in find_active_content(str(pdf_path), max_pages=MAX_PAGES)]
     except Exception as e:
         report["active"] = [asdict(Finding("hold", f"structure could not be read: {type(e).__name__}", "document"))]
-    report["hidden"] = [asdict(r) for r in find_hidden_text(pdf, max_pages=MAX_PAGES)]
+    # Page sizes are checked before anything renders a page: the hidden-text check renders too, and a 200-inch
+    # page would take gigabytes to draw.
+    too_large = frozenset(i for i in range(min(len(pdf), MAX_PAGES)) if _pixels(pdf[i]) > MAX_PIXELS)
+    report["hidden"] = [asdict(r) for r in find_hidden_text(pdf, max_pages=MAX_PAGES, skip=too_large)]
     for i in range(min(len(pdf), MAX_PAGES)):
-        page = pdf[i]
-        w, h = page.get_size()
-        if (w * DPI / 72) * (h * DPI / 72) > MAX_PIXELS:
+        if i in too_large:
             report["problems"].append(f"page {i + 1} is too large to render")
             continue
+        page = pdf[i]
         name = f"page-{i + 1}.png"
         page.render(scale=DPI / 72).to_pil().save(out_dir / name)
         report["images"].append(name)
         page.close()
     pdf.close()
     return _finish(report, out_dir)
+
+
+def _pixels(page) -> float:
+    w, h = page.get_size()
+    return (w * DPI / 72) * (h * DPI / 72)
 
 
 def _finish(report: dict, out_dir: Path) -> dict:

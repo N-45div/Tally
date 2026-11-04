@@ -59,3 +59,16 @@ def test_the_command_prints_a_one_line_verdict(tmp_path):
     pdf = make(tmp_path / "clean.pdf")
     done = subprocess.run([sys.executable, "-m", "tally.airlock.inspect", str(pdf), str(tmp_path / "out")], capture_output=True, text=True, check=True)
     assert json.loads(done.stdout) == {"verdict": "clear", "reasons": [], "images": ["page-1.png"]}
+
+
+def test_a_giant_page_is_held_without_being_drawn(tmp_path):
+    import time
+    f = tmp_path / "giant.pdf"
+    c = canvas.Canvas(str(f), pagesize=(14400, 14400))  # 200 x 200 inches
+    c.drawString(72, 72, "INVOICE")
+    c.showPage()
+    c.save()
+    started = time.monotonic()
+    r = inspect(f, tmp_path / "out")
+    assert r["verdict"] == "hold" and r["reasons"] == ["page 1 is too large to render"] and r["images"] == []
+    assert time.monotonic() - started < 3, "the page must be refused before anything draws it"

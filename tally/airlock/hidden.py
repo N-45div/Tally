@@ -88,9 +88,13 @@ def _why_hidden(textpage, i: int, box, size: tuple[float, float], gray) -> str |
     return None
 
 
-def find_hidden_text(pdf: pdfium.PdfDocument, max_pages: int | None = None) -> list[HiddenRun]:
+def find_hidden_text(pdf: pdfium.PdfDocument, max_pages: int | None = None, skip: frozenset[int] = frozenset()) -> list[HiddenRun]:
+    """Hidden text on each page, from the first; `skip` names pages (from 0) not to look at, such as pages too large to
+    render, which the caller holds for that reason instead."""
     runs: list[HiddenRun] = []
     for index in range(len(pdf) if max_pages is None else min(len(pdf), max_pages)):
+        if index in skip:
+            continue
         page = pdf[index]
         size = page.get_size()
         gray = page.render(scale=SCALE).to_pil().convert("L")
