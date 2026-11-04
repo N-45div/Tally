@@ -85,6 +85,11 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
         text = results.read_text() if results.is_file() else "The lab has not run on this host yet.\n"
         return text, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
+    @app.get("/lab.json")
+    def lab_json():
+        results = lab_dir / "results.json"
+        return (results.read_text(), 200, {"Content-Type": "application/json"}) if results.is_file() else ("{}", 404, {"Content-Type": "application/json"})
+
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if request.method == "POST":

@@ -168,3 +168,6 @@ def test_the_lab_results_are_public(tmp_path):
     (lab / "results.txt").write_text("Tally lab, results")
     r = c.get("/lab")
     assert r.status_code == 200 and r.data == b"Tally lab, results" and r.headers["Content-Type"].startswith("text/plain")
+    assert c.get("/lab.json").status_code == 404
+    (lab / "results.json").write_text('{"tally": {}}')
+    assert c.get("/lab.json").get_json() == {"tally": {}}
