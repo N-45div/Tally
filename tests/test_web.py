@@ -136,3 +136,14 @@ def test_session_cookie_is_strict(app):
     c = app.test_client()
     r = c.get("/login")
     assert "SameSite=Strict" in r.headers.get("Set-Cookie", "") and "HttpOnly" in r.headers.get("Set-Cookie", "")
+
+
+def test_check_again_after_the_purchase_order_is_added(app):
+    c = signed_in(app)
+    s = app.store
+    s.close_po("setup", 1)
+    iid = ready_invoice(app)
+    assert s.invoice(iid)["status"] == "held"
+    s.add_po("setup", "PO-55121", 1, "GBP", 300000)  # a new order; the invoice still names the closed one
+    r = c.post(f"/invoices/{iid}/check-again", data={"csrf": csrf(c)}, follow_redirects=True)
+    assert b"still held" in r.data and b"is closed" in r.data

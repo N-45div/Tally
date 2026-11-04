@@ -158,6 +158,17 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True) -> 
                    "held": "Held: something changed since it was checked. See below."}[inv["status"]])
         return redirect(url_for("invoice", invoice_id=invoice_id))
 
+    @app.post("/invoices/<int:invoice_id>/check-again")
+    @login_required
+    def check_again(invoice_id: int):
+        s = store()
+        try:
+            inv = s.check_again(user(), invoice_id, recheck=lambda i: recheck(s, i))
+            flash("Checked again: " + ("ready to approve." if inv["status"] == "ready" else "still held."))
+        except (ValueError, KeyError) as e:
+            flash(str(e).strip("'"))
+        return redirect(url_for("invoice", invoice_id=invoice_id))
+
     @app.route("/vendors", methods=["GET", "POST"])
     @login_required
     def vendors():
