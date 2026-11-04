@@ -90,8 +90,8 @@ What this shows, plainly:
   text, it usually held the invoice, whether the instruction was blunt or worded as a notice.
 - What it missed is what is not in the text: it paid the files carrying JavaScript, a launch action or an embedded
   program every time. Given records to trust, it also paid the real vendor for most files with hidden instructions.
-  Its wrong payments were an invoice larger than its purchase order (text only, with no purchase orders to check)
-  and a 200-inch junk page.
+  In the two runs whose wrong payments were looked at one by one, they were an invoice larger than its purchase
+  order (text only, with no purchase orders to check) and a 200-inch junk page (with records).
 - Tally's one miss in 96 was a safe one: in the first run it held the legitimate invoice with a printed note to AI
   readers, because its two readings differed. Its readings never contained a hidden account (0 of 32).
 - On the lookalike vendor ("Northwlnd"), one model quietly corrected the name to the real vendor. The two readings
