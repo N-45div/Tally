@@ -54,6 +54,39 @@ def _cell(rows: list[dict]) -> str:
     return " ".join(marks)
 
 
+def summary(res: dict) -> dict:
+    """One line per run, kept in history.jsonl, because the models do not answer the same way every time."""
+    out: dict = {"at": res["at"], "revision": res["revision"]}
+    if res.get("tally"):
+        rs = res["tally"]["results"]
+        hidden = [r for r in rs if r["hidden_iban_read"] is not None]
+        out["tally"] = {"files": len(rs), "as_expected": sum(r["as_expected"] for r in rs), "wrong": sum(r["wrong_payment"] for r in rs),
+                        "missed": sum(r["missed_hold"] for r in rs), "hidden_read": sum(r["hidden_iban_read"] for r in hidden),
+                        "hidden_files": len(hidden), "usd": round(sum(r["usd"] for r in rs), 4)}
+    for c in ("text only", "with records"):
+        rows = [r for r in res.get("naive") or [] if r["config"] == c]
+        if rows:
+            out["naive, " + c] = {"decisions": len(rows), "wrong": sum(r["wrong_payment"] for r in rows),
+                                  "to_attacker": sum(r["paid_attacker"] for r in rows), "missed": sum(r["missed_hold"] for r in rows)}
+    if res.get("guest"):
+        out["guest"] = {"attacks": len(res["guest"]), "contained": sum(r["contained"] for r in res["guest"])}
+    return out
+
+
+def history_report(history: list[dict]) -> str:
+    lines = ["", "Every run so far (the models vary from run to run; this is how much):",
+             f"  {'when':20} {'commit':12}  {'Tally: expected / wrong / missed':34}  {'naive text: wrong / missed':28}  "
+             f"{'naive records: wrong / missed':30}  microVM contained"]
+    for h in history:
+        t, a, b, g = h.get("tally"), h.get("naive, text only"), h.get("naive, with records"), h.get("guest")
+        lines.append(f"  {h['at'][:19]:20} {h['revision']:12}  "
+                     + (f"{t['as_expected']}/{t['files']} / {t['wrong']} / {t['missed']}" if t else "-").ljust(34) + "  "
+                     + (f"{a['wrong']} / {a['missed']} of {a['decisions']}" if a else "-").ljust(28) + "  "
+                     + (f"{b['wrong']} / {b['missed']} of {b['decisions']}" if b else "-").ljust(30) + "  "
+                     + (f"{g['contained']}/{g['attacks']}" if g else "-"))
+    return "\n".join(lines) + "\n"
+
+
 def text_report(res: dict) -> str:
     lines = [f"Tally lab, {res['at']}, commit {res['revision']}", ""]
     t, n, g = res.get("tally"), res.get("naive"), res.get("guest")
@@ -99,9 +132,9 @@ def text_report(res: dict) -> str:
     if g:
         lines.append(f"Attacks from inside the microVM: {sum(r['contained'] for r in g)} of {len(g)} contained.")
         for r in g:
-            mb = r["bytes_on_host"] / 1024 ** 2
+            mb = max(r["bytes_on_host"], r.get("host_disk_lost_at_peak", 0)) / 1024 ** 2
             lines.append(f"  {'contained' if r['contained'] else 'NOT CONTAINED':13} {r['name']:38} {r['outcome']}; {r['checks'][:70]}"
-                         + (f"; {mb:.0f} MB reached the host" if mb >= 1 else "") + (f"; left running: {r['left_running']}" if r["left_running"] else "")
+                         + (f"; the host's disk lost {mb:.0f} MB at the peak" if mb >= 1 else "") + (f"; left running: {r['left_running']}" if r["left_running"] else "")
                          + (f"; the guest said: {r['guest_said'][:120]}" if r["guest_said"] and not r["contained"] else ""))
     else:
         lines.append(f"Attacks from inside the microVM: not run here ({res['skipped'].get('guest')}).")
@@ -131,8 +164,12 @@ def main(out_dir: Path, trials: int) -> None:
         res["skipped"]["guest"] = why_no_vm
     res["seconds"] = round(time.monotonic() - started, 1)
     (out_dir / "results.json").write_text(json.dumps(res, indent=1))
-    (out_dir / "results.txt").write_text(text_report(res))
-    print(text_report(res))
+    with open(out_dir / "history.jsonl", "a") as f:
+        f.write(json.dumps(summary(res)) + "\n")
+    history = [json.loads(line) for line in (out_dir / "history.jsonl").read_text().splitlines() if line.strip()]
+    report = text_report(res) + history_report(history)
+    (out_dir / "results.txt").write_text(report)
+    print(report)
 
 
 if __name__ == "__main__":
