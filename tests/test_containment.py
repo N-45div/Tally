@@ -56,7 +56,8 @@ def test_a_guest_cannot_write_more_to_the_host_than_a_real_run_can(tmp_path):
     ran = sandbox.run_in_guest(["python", "-c", code], [(tmp_path / "out", "/out", False)])
     assert ran is not None and ran.returncode != 0, ran
     assert "No space left on device" in ran.stderr or ran.stderr.startswith("stopped: wrote"), ran.stderr[-300:]
-    assert sum(p.stat().st_size for p in (tmp_path / "out").iterdir()) <= sandbox.OUT_LIMIT
+    # The quota is the limit rounded up to whole megabytes.
+    assert sum(p.stat().st_size for p in (tmp_path / "out").iterdir()) <= sandbox.OUT_LIMIT + 2 ** 20
     assert time.monotonic() - started < 30
 
 
