@@ -90,7 +90,7 @@ def run(hidden_pdf: Path, work_dir: Path | None = None) -> list[dict]:
             except BadOutput as e:
                 checked = f"refused: {e}"
             left = _leftovers()
-            outcome = ("timed out" if ran is None else f"exited {ran.returncode}") + f" after {seconds:.1f} s"
+            outcome = ("timed out" if ran is None else ran.stderr if ran.returncode == -1 else f"exited {ran.returncode}") + f" after {seconds:.1f} s"
             results.append({
                 "name": name, "what": what, "outcome": outcome, "checks": checked, "bytes_on_host": landed,
                 "guest_said": (ran.stdout.strip()[-300:] if ran else ""), "left_running": left,
