@@ -157,3 +157,14 @@ def test_a_person_can_change_their_password(app):
     r = c.post("/account", data={"csrf": token, "current": PASSWORD, "new": "another long password", "again": "another long password"},
                follow_redirects=True)
     assert b"Password changed" in r.data and app.store.check_password("carol", "another long password")
+
+
+def test_the_lab_results_are_public(tmp_path):
+    lab = tmp_path / "lab"
+    app = create_app(tmp_path / "data", "test-secret", secure_cookies=False, lab_dir=lab)
+    c = app.test_client()
+    assert c.get("/lab").data == b"The lab has not run on this host yet.\n"
+    lab.mkdir()
+    (lab / "results.txt").write_text("Tally lab, results")
+    r = c.get("/lab")
+    assert r.status_code == 200 and r.data == b"Tally lab, results" and r.headers["Content-Type"].startswith("text/plain")

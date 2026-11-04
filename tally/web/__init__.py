@@ -28,7 +28,7 @@ LOCKOUT_FAILURES = 5
 LOCKOUT_SECONDS = 60
 
 
-def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True) -> Flask:
+def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab_dir: Path = Path("/var/www/tally/lab")) -> Flask:
     app = Flask(__name__)
     app.config.update(SECRET_KEY=secret_key, MAX_CONTENT_LENGTH=MAX_UPLOAD + 1024 * 1024,
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict", SESSION_COOKIE_SECURE=secure_cookies)
@@ -77,6 +77,13 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True) -> 
     @app.context_processor
     def common():
         return {"user": user(), "csrf_token": session.get("csrf", "")}
+
+    @app.get("/lab")
+    def lab():
+        """The latest lab results, in public: how Tally was attacked and what happened (see lab/)."""
+        results = lab_dir / "results.txt"
+        text = results.read_text() if results.is_file() else "The lab has not run on this host yet.\n"
+        return text, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
