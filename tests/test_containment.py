@@ -46,14 +46,18 @@ def test_the_guest_cannot_use_more_than_its_memory():
     assert ran is not None and ran.returncode != 0 and "1073741824" not in ran.stdout
 
 
-def test_a_guest_that_writes_too_much_is_stopped_and_its_writing_deleted(tmp_path):
+def test_a_guest_cannot_write_more_to_the_host_than_a_real_run_can(tmp_path):
+    # Two layers: Microsandbox's quota on the folder refuses the write (the guest gets "no space left"), and the
+    # host's own watch stops the microVM if anything gets past that. Either way, no more than a real run's worth lands.
     import time
     (tmp_path / "out").mkdir()
     code = "chunk = b'x' * (1 << 20)\nwith open('/out/fill', 'wb') as f:\n    for _ in range(2048):\n        f.write(chunk)"
     started = time.monotonic()
     ran = sandbox.run_in_guest(["python", "-c", code], [(tmp_path / "out", "/out", False)])
-    assert ran is not None and ran.returncode == -1 and ran.stderr.startswith("stopped: wrote"), ran
-    assert list((tmp_path / "out").iterdir()) == [] and time.monotonic() - started < 30
+    assert ran is not None and ran.returncode != 0, ran
+    assert "No space left on device" in ran.stderr or ran.stderr.startswith("stopped: wrote"), ran.stderr[-300:]
+    assert sum(p.stat().st_size for p in (tmp_path / "out").iterdir()) <= sandbox.OUT_LIMIT
+    assert time.monotonic() - started < 30
 
 
 def test_the_guest_cannot_fill_its_own_disk_past_its_size():
