@@ -105,3 +105,10 @@ a.button.secondary { background: transparent; color: var(--fg); border: 1px soli
 .nowrap { white-space: nowrap; }
 @media (max-width: 640px) { .top nav + .signin { margin-left: auto; } }
 .demo-bar { margin: 0; padding: 8px 16px; background: var(--ok-bg); border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.review { display: grid; gap: 8px 28px; grid-template-columns: minmax(0, 1fr); }
+.review-pages .pages img { max-width: 100%; }
+@media (min-width: 1000px) {
+  main:has(.review) { max-width: 1280px; }
+  .review { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .review-pages { position: sticky; top: 12px; align-self: start; padding-top: 12px; }
+}

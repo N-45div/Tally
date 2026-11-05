@@ -17,6 +17,8 @@
   <p class="hold">This invoice could not be processed: {{ inv.note }}</p>
 {% endif %}
 
+<div class="review">
+<div class="review-main">
 {% if decision %}
 <section class="decision {{ 'ready' if decision.ready else 'held' }}">
   {% if inv.status == "approved" %}
@@ -100,11 +102,20 @@
   <ul>{% for x in a.active %}<li>{{ x.what }} ({{ x.where }}){% if x.severity == "hold" %}: holds the invoice{% endif %}</li>{% endfor %}</ul>
 {% endif %}
 {% for p in a.problems %}<p class="hold">{{ p }}</p>{% endfor %}
-<div class="pages">{% for name in a.images %}<img src="{{ url_for('page_image', invoice_id=inv.id, name=name) }}" alt="Page {{ loop.index }} of the invoice">{% endfor %}</div>
 {% endif %}
 
 <h2>Ledger</h2>
 <table class="ledger">
   <tbody>{% for e in entries %}<tr><td>{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td><td class="quiet">{{ e.hash[:12] }}</td></tr>{% endfor %}</tbody>
 </table>
+</div>
+<aside class="review-pages" aria-label="The invoice's pages">
+  {% if inv.airlock and inv.airlock.images %}
+    <p class="quiet small">The pages as they came out of the microVM: what a person sees, and all the models saw.</p>
+    <div class="pages">{% for name in inv.airlock.images %}<img src="{{ url_for('page_image', invoice_id=inv.id, name=name) }}" alt="Page {{ loop.index }} of the invoice">{% endfor %}</div>
+  {% elif inv.airlock %}
+    <p class="quiet">No page images came out of the microVM for this file.</p>
+  {% endif %}
+</aside>
+</div>
 {% endblock %}
