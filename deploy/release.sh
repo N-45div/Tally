@@ -129,6 +129,20 @@ UNIT
   else
     echo "not run: the tests failed"
   fi
+  step "FATURA benchmark"
+  # About a dollar of model calls a run, so it runs only when what it measures has changed: the airlock, the sandbox,
+  # the reader, the rules or the benchmark itself. It waits for the lab, and the lab waits for it.
+  BENCH_VERSION=$(cat "$REL/lab/fatura.py" "$REL/tally/extract.py" "$REL/tally/vultr.py" "$REL/tally/rules.py" \
+    "$REL"/tally/airlock/*.py "$REL/tally/sandbox/__init__.py" | sha256sum | cut -c1-16)
+  if [ "$TESTS" -ne 0 ]; then
+    echo "not run: the tests failed"
+  elif [ "$(cat "$WWW/lab/fatura.version" 2>/dev/null)" = "$BENCH_VERSION" ]; then
+    echo "up to date for this code ($BENCH_VERSION)"
+  else
+    nohup flock /var/lib/tally/lab.lock sh -c "'$REL/.venv/bin/python' -m lab.fatura '$WWW/lab' 4 4 && echo $BENCH_VERSION > '$WWW/lab/fatura.version'" \
+      > "$WWW/lab/fatura.log" 2>&1 < /dev/null &
+    echo "started in the background for $BENCH_VERSION; results at /lab when it finishes"
+  fi
   # Keep the five newest releases, and always the one the services run.
   RUNNING=$(grep -o '/opt/tally/releases/[^/]*' "$HOME/.config/systemd/user/tally-web.service" 2>/dev/null | head -1)
   ls -1dt /opt/tally/releases/*/ | tail -n +6 | sed 's#/$##' | grep -vxF "${RUNNING:-none}" | xargs -r rm -rf
