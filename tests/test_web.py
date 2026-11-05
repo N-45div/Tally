@@ -250,6 +250,9 @@ def test_the_lab_page_shows_the_benchmark_and_load_results(tmp_path):
     page = create_app(tmp_path / "data", "s", secure_cookies=False, lab_dir=lab).test_client().get("/lab").data.decode()
     assert "Invoices it has never seen" in page and "1 of 2; the rest would be held" in page and "glm-5.3-flash correct" in page
     assert "How much one host takes" in page and "30.5" in page
+    c = create_app(tmp_path / "data", "s", secure_cookies=False, lab_dir=lab).test_client()
+    assert c.get("/lab/fatura.json").get_json()["per_layout"] == 4 and c.get("/lab/load.json").get_json()["runs"][0]["workers"] == 4
+    assert c.get("/lab/results.json").status_code == 404
 
 
 def test_a_background_run_can_be_followed_by_its_log(tmp_path):

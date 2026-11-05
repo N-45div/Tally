@@ -139,6 +139,14 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
                                grid=labdata.grid(latest) if latest else [],
                                fatura=labdata.extra(lab_dir, "fatura.json"), load=labdata.extra(lab_dir, "load.json"))
 
+    @app.get("/lab/<name>.json")
+    def lab_extra_json(name: str):
+        """The benchmark's and the load test's full results, every invoice included."""
+        if name not in ("fatura", "load"):
+            abort(404)
+        found = labdata.extra(lab_dir, f"{name}.json")
+        return (json.dumps(found), 200, {"Content-Type": "application/json"}) if found else ("{}", 404, {"Content-Type": "application/json"})
+
     @app.get("/lab/log/<name>")
     def lab_log(name: str):
         """The last lines of a background run's log (the lab, the benchmark, the load test), so a run can be followed."""
