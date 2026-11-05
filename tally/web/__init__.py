@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 import re
 import secrets
 import sqlite3
@@ -193,7 +194,11 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
     @app.get("/invoices")
     @login_required
     def queue():
-        return render_template("queue.html", invoices=store().invoices())
+        everything = store().invoices()
+        counts = Counter(i["status"] for i in everything)
+        status = request.args.get("status") if request.args.get("status") in counts else None
+        shown = [i for i in everything if i["status"] == status] if status else everything
+        return render_template("queue.html", invoices=shown, counts=counts, status=status, total=len(everything))
 
     def demo_upload_refused() -> str | None:
         """Why one more upload to the demo would be over its limits, or None."""

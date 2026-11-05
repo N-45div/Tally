@@ -76,7 +76,7 @@ def test_an_upload_is_queued_and_never_opened_by_the_web_app(app):
     from io import BytesIO
     r = c.post("/upload", data={"csrf": csrf(c), "files": [(BytesIO(b"%PDF-1.7 a"), "a.pdf"), (BytesIO(b"%PDF-1.7 b"), "b.pdf")]},
                content_type="multipart/form-data", follow_redirects=True)
-    assert b"2 invoice(s) queued" in r.data and r.data.count(b"Waiting") == 2
+    assert b"2 invoice(s) queued" in r.data and r.data.count(b'class="status queued"') == 2
     assert [i["status"] for i in app.store.invoices()] == ["queued", "queued"]
     assert b'http-equiv="refresh"' in r.data  # the page refreshes while something is waiting
 
@@ -221,3 +221,14 @@ def test_demo_uploads_are_capped_per_visitor(demo_app):
     assert b"uploads per visitor" in r.data
     from lab.demo import PRELOADED
     assert len(Store(demo_app.demo_dir).invoices()) == len(PRELOADED) + DEMO_PER_VISITOR[0]
+
+
+def test_the_queue_counts_invoices_by_status_and_filters_by_it(app):
+    c = signed_in(app)
+    ready = ready_invoice(app)
+    app.store.add_invoice("carol", "waiting.pdf", b"%PDF-1.7 waiting")
+    page = c.get("/invoices").data.decode()
+    assert "All <b>2</b>" in page and "Ready to approve <b>1</b>" in page and "Waiting <b>1</b>" in page
+    page = c.get("/invoices?status=ready").data.decode()
+    assert f'href="/invoices/{ready}"' in page and "waiting.pdf" not in page
+    assert "waiting.pdf" in c.get("/invoices?status=nonsense").data.decode()  # an unknown filter shows everything

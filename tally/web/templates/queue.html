@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% set labels = {"queued": "Waiting", "processing": "Opening", "held": "Held", "ready": "Ready to approve",
                  "approved": "Approved", "rejected": "Rejected", "failed": "Failed"} %}
-{% block head %}{% if invoices | selectattr("status", "in", ["queued", "processing"]) | list %}<meta http-equiv="refresh" content="4">{% endif %}{% endblock %}
+{% block head %}{% if counts.queued or counts.processing %}<meta http-equiv="refresh" content="4">{% endif %}{% endblock %}
 {% block title %}Invoices{% endblock %}
 {% block main %}
 <h1>Invoices</h1>
@@ -11,6 +11,14 @@
   <button>Upload</button>
   <p class="quiet">Each file is opened in its own sandbox with no network. Nothing is paid until a person approves it.</p>
 </form>
+{% if total %}
+<nav class="counts" aria-label="Filter by status">
+  <a href="{{ url_for('queue') }}" class="{{ 'on' if not status }}">All <b>{{ total }}</b></a>
+  {% for st in ["held", "ready", "queued", "processing", "approved", "rejected", "failed"] if counts[st] %}
+  <a href="{{ url_for('queue', status=st) }}" class="{{ 'on' if status == st }}">{{ labels[st] }} <b>{{ counts[st] }}</b></a>
+  {% endfor %}
+</nav>
+{% endif %}
 {% if invoices %}
 <table>
   <thead><tr><th>#</th><th>File</th><th>Vendor</th><th class="num">Total</th><th>Status</th><th>Why</th></tr></thead>
