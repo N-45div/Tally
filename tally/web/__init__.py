@@ -79,6 +79,11 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
     def common():
         return {"user": user(), "csrf_token": session.get("csrf", "")}
 
+    @app.get("/")
+    def home():
+        latest, history = labdata.load(lab_dir)
+        return render_template("home.html", t=labdata.totals(history), latest=latest)
+
     @app.get("/lab")
     def lab():
         """The lab's results, in public: how Tally is attacked after every release and what happened (see lab/)."""
@@ -144,7 +149,7 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
             return redirect(url_for("account"))
         return render_template("account.html")
 
-    @app.get("/")
+    @app.get("/invoices")
     @login_required
     def queue():
         return render_template("queue.html", invoices=store().invoices())

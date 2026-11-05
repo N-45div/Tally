@@ -51,7 +51,7 @@ def ready_invoice(app, airlock=None):
 
 def test_everything_needs_a_signed_in_person(app):
     c = app.test_client()
-    for path in ("/", "/vendors", "/pos", "/ledger", "/invoices/1"):
+    for path in ("/invoices", "/vendors", "/pos", "/ledger", "/invoices/1"):
         r = c.get(path)
         assert r.status_code == 302 and "/login" in r.headers["Location"]
 
@@ -112,7 +112,7 @@ def test_only_the_page_images_the_report_names_can_be_fetched(app):
 
 
 def test_pages_carry_a_strict_content_policy(app):
-    r = signed_in(app).get("/")
+    r = signed_in(app).get("/invoices")
     assert "default-src 'none'" in r.headers["Content-Security-Policy"] and "script-src" not in r.headers["Content-Security-Policy"]
     assert r.headers["X-Content-Type-Options"] == "nosniff"
 

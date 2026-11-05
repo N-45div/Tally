@@ -9,7 +9,13 @@
 </head>
 <body>
   <header class="top">
-    <a class="brand" href="{{ url_for('queue') }}">Tally</a>
+    <a class="brand" href="{{ url_for('home') }}">Tally</a>
+    {% if not user %}
+    <nav>
+      <a href="{{ url_for('lab') }}">The lab</a>
+    </nav>
+    <a class="signin" href="{{ url_for('login') }}">Sign in</a>
+    {% endif %}
     {% if user %}
     <nav>
       <a href="{{ url_for('queue') }}">Invoices</a>
