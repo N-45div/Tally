@@ -121,11 +121,16 @@ UNIT
   fi
   step "lab"
   if [ "$TESTS" -eq 0 ]; then
-    # The lab takes minutes, so it runs on after this page is published; its results appear at /lab. One lab at a
-    # time: a newer one waits for the one before it.
+    # The lab takes minutes, so it runs on after this page is published; its results appear at /lab. It runs on the
+    # release that is live when its turn comes (deploy/lab-latest.sh), so one waiting lab is enough: at most one runs
+    # and one waits, however many releases come in between.
     mkdir -p "$WWW/lab"
-    nohup flock /var/lib/tally/lab.lock "$REL/.venv/bin/python" -m lab "$WWW/lab" 3 > "$WWW/lab/run.log" 2>&1 < /dev/null &
-    echo "started in the background; results at /lab when it finishes"
+    if [ "$(pgrep -u "$(id -u)" -c -f "flock /var/lib/tally/lab.lock bash .*lab-latest.sh")" -ge 2 ]; then
+      echo "a lab is already waiting; it will run on the newest release"
+    else
+      nohup flock /var/lib/tally/lab.lock bash "$REL/deploy/lab-latest.sh" > "$WWW/lab/run.log" 2>&1 < /dev/null &
+      echo "started in the background; results at /lab when it finishes"
+    fi
   else
     echo "not run: the tests failed"
   fi
