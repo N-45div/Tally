@@ -12,3 +12,9 @@ out/
 # build leftovers from pip install -e .
 *.egg-info/
 build/
+# a workspace (database, uploaded files, page images, demo samples) written into the repo by mistake
+*.db
+/files/
+/pages/
+/samples/
+/samples.json
