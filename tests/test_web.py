@@ -163,10 +163,11 @@ def test_the_lab_results_are_public(tmp_path):
     lab = tmp_path / "lab"
     app = create_app(tmp_path / "data", "test-secret", secure_cookies=False, lab_dir=lab)
     c = app.test_client()
-    assert c.get("/lab").data == b"The lab has not run on this host yet.\n"
+    assert c.get("/lab.txt").data == b"The lab has not run on this host yet.\n"
+    assert b"has not run on this host yet" in c.get("/lab").data
     lab.mkdir()
     (lab / "results.txt").write_text("Tally lab, results")
-    r = c.get("/lab")
+    r = c.get("/lab.txt")
     assert r.status_code == 200 and r.data == b"Tally lab, results" and r.headers["Content-Type"].startswith("text/plain")
     assert c.get("/lab.json").status_code == 404
     (lab / "results.json").write_text('{"tally": {}}')

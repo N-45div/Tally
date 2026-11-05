@@ -20,6 +20,7 @@ from flask import Flask, abort, flash, g, redirect, render_template, request, se
 
 from tally import ledger
 from tally.normalize import key, money, to_cents
+from tally.web import labdata
 from tally.pipeline import recheck
 from tally.store import Store
 
@@ -80,7 +81,20 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
 
     @app.get("/lab")
     def lab():
-        """The latest lab results, in public: how Tally was attacked and what happened (see lab/)."""
+        """The lab's results, in public: how Tally is attacked after every release and what happened (see lab/)."""
+        latest, history = labdata.load(lab_dir)
+        t = labdata.totals(history)
+        bars = []
+        if t:
+            rows = [("Tally", t["tally_missed"], t["files"])] + [(label, n["missed"], n["decisions"]) for label, n in t["naive"].items()]
+            for i, (label, missed, of) in enumerate(rows):
+                share = missed / of if of else 0.0
+                bars.append({"label": label, "missed": missed, "of": of, "pct": round(100 * share), "y": 8 + 40 * i, "w": round(360 * share, 1)})
+        return render_template("lab.html", latest=latest, history=history, t=t, bars=bars,
+                               grid=labdata.grid(latest) if latest else [])
+
+    @app.get("/lab.txt")
+    def lab_txt():
         results = lab_dir / "results.txt"
         text = results.read_text() if results.is_file() else "The lab has not run on this host yet.\n"
         return text, 200, {"Content-Type": "text/plain; charset=utf-8"}

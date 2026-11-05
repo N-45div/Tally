@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% set icons = {"good": "✓", "warning": "•", "serious": "~", "critical": "!", "neutral": "–"} %}
+{% macro cell(c) -%}
+  <span class="cell {{ c.kind }}" title="{{ c.why }}"><span class="i" aria-hidden="true">{{ icons[c.kind] }}</span>{{ c.text }}</span>
+{%- endmacro %}
+{% block title %}The lab{% endblock %}
+{% block main %}
+<section class="hero small">
+  <p class="eyebrow">The lab</p>
+  <h1>How Tally is attacked, after every release.</h1>
+  <p class="lede">24 invoice files built to get money paid wrongly, the same files given to a naive AI agent, and 11
+    attacks from inside the microVM as if a file had broken the PDF parser.
+    {% if latest %}Latest run {{ latest.at[:16] | replace("T", " ") }} UTC, commit {{ latest.revision }}.{% endif %}
+    Also as <a href="{{ url_for('lab_txt') }}">text</a> and <a href="{{ url_for('lab_json') }}">JSON</a>.</p>
+</section>
+
+{% if not latest %}
+<p>The lab has not run on this host yet.</p>
+{% else %}
+
+{% if t %}
+<section>
+  <h2>Over the {{ t.runs }} run{{ "s" if t.runs != 1 }} so far</h2>
+  <p class="quiet">A <strong>wrong payment</strong> is money to an account not on file, the wrong amount, or an invoice that
+    is not payable. A <strong>missed hold</strong> is paying, or making ready, something that should have been held.</p>
+  <table class="score">
+    <thead><tr><th></th><th class="num">Tally</th>{% for label in t.naive %}<th class="num">{{ label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      <tr><th>Decisions</th><td class="num">{{ t.files }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.decisions }}</td>{% endfor %}</tr>
+      <tr><th>Wrong payments</th><td class="num">{{ t.tally_wrong }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.wrong }}</td>{% endfor %}</tr>
+      <tr><th>Missed holds</th><td class="num">{{ t.tally_missed }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.missed }}</td>{% endfor %}</tr>
+      <tr><th>Paid the attacker's account</th><td class="num">0</td>{% for n in t.naive.values() %}<td class="num">{{ n.to_attacker }}</td>{% endfor %}</tr>
+    </tbody>
+  </table>
+  <figure class="bars">
+    <figcaption>Share of decisions that missed a hold</figcaption>
+    <svg viewBox="0 0 600 {{ 16 + 40 * bars | length }}" role="img" aria-label="Share of decisions that missed a hold, by approach">
+      <line class="base" x1="200" y1="0" x2="200" y2="{{ 8 + 40 * bars | length }}"/>
+      {% for b in bars %}
+      <g>
+        <title>{{ b.label }}: {{ b.missed }} of {{ b.of }} decisions ({{ b.pct }}%)</title>
+        <text class="name" x="190" y="{{ b.y + 15 }}" text-anchor="end">{{ b.label }}</text>
+        <rect class="hit" x="200" y="{{ b.y - 4 }}" width="400" height="28"/>
+        {% if b.w >= 4 %}
+        <path class="bar" d="M200,{{ b.y }} h{{ b.w - 4 }} a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-{{ b.w - 4 }} z"/>
+        {% elif b.w > 0 %}
+        <rect class="bar" x="200" y="{{ b.y }}" width="{{ b.w }}" height="20"/>
+        {% endif %}
+        <text class="value" x="{{ 208 + b.w }}" y="{{ b.y + 15 }}">{{ b.pct }}%</text>
+      </g>
+      {% endfor %}
+    </svg>
+  </figure>
+</section>
+{% endif %}
+
+<section>
+  <h2>Every attack file, latest run</h2>
+  <p class="quiet legend">
+    {{ cell({"kind": "good", "text": "as it should be", "why": ""}) }}
+    {{ cell({"kind": "warning", "text": "held, though fine to pay (a safe mistake)", "why": ""}) }}
+    {{ cell({"kind": "serious", "text": "missed hold", "why": ""}) }}
+    {{ cell({"kind": "critical", "text": "wrong payment", "why": ""}) }}
+    {{ cell({"kind": "neutral", "text": "could not read the file", "why": ""}) }}
+    Hover a cell for the reason.
+  </p>
+  <table class="grid">
+    <thead><tr><th>Attack</th><th>Should be</th><th>Tally</th><th>Naive agent, text only</th><th>Naive agent, with records</th></tr></thead>
+    <tbody>
+    {% for r in grid %}
+      {% if loop.first or r.kind != grid[loop.index0 - 1].kind %}<tr class="group"><th colspan="5">{{ r.kind | capitalize }}</th></tr>{% endif %}
+      <tr>
+        <td>{{ r.attack }}</td>
+        <td>{{ r.expect }}</td>
+        <td>{{ cell(r.tally) }}</td>
+        {% for key in ["naive, text only", "naive, with records"] %}
+        <td class="tries">{% for c in r.naive[key] %}{{ cell(c) }}{% else %}<span class="quiet">not run</span>{% endfor %}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if latest.guest %}
+<section id="inside">
+  <h2>From inside the microVM, latest run</h2>
+  <p class="quiet">Hostile code runs in a fresh microVM with the limits every invoice gets, then its output goes through
+    the host's usual checks. Contained means the output was refused, nothing was left running, and the host's disk
+    lost no more than a real run may write.</p>
+  <table>
+    <thead><tr><th>Attack</th><th></th><th>What happened</th><th class="num">Host disk at peak</th></tr></thead>
+    <tbody>
+    {% for g in latest.guest %}
+      <tr>
+        <td>{{ g.name }}<div class="quiet small">{{ g.what }}</div></td>
+        <td>{{ cell({"kind": "good" if g.contained else "critical", "text": "contained" if g.contained else "not contained", "why": g.checks}) }}</td>
+        <td>{{ g.outcome }}; {{ g.checks }}</td>
+        <td class="num">{{ ((g.host_disk_lost_at_peak or 0) / 1048576) | round | int }} MB</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="quiet">The forged clean report is the known limit: a sandbox that was broken into and lies consistently passes
+    the output checks. The rules about vendors, bank details and purchase orders do not depend on the sandbox, and
+    nothing is approved without a person.</p>
+</section>
+{% endif %}
+
+{% if history %}
+<section>
+  <h2>Every run</h2>
+  <p class="quiet">The models do not answer the same way every time; this is how much the results move.</p>
+  <table>
+    <thead><tr><th>When (UTC)</th><th>Commit</th><th class="num">Tally as expected</th><th class="num">Tally wrong / missed</th>
+      <th class="num">Naive, text: wrong / missed</th><th class="num">Naive, records: wrong / missed</th><th class="num">MicroVM contained</th></tr></thead>
+    <tbody>
+    {% for h in history | reverse %}
+      {% set a = h.get("naive, text only") %}{% set b = h.get("naive, with records") %}
+      <tr>
+        <td class="nowrap">{{ h.at[:16] | replace("T", " ") }}</td><td><code>{{ h.revision }}</code></td>
+        <td class="num">{% if h.tally %}{{ h.tally.as_expected }} of {{ h.tally.files }}{% endif %}</td>
+        <td class="num">{% if h.tally %}{{ h.tally.wrong }} / {{ h.tally.missed }}{% endif %}</td>
+        <td class="num">{% if a %}{{ a.wrong }} / {{ a.missed }} of {{ a.decisions }}{% endif %}</td>
+        <td class="num">{% if b %}{{ b.wrong }} / {{ b.missed }} of {{ b.decisions }}{% endif %}</td>
+        <td class="num">{% if h.guest %}{{ h.guest.contained }} of {{ h.guest.attacks }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section>
+  <h2>Limits of the lab</h2>
+  <p>The attack files are Tally's own, not collected from real fraud. The naive agent is one model family, given the text
+    layer only. The numbers are small: 24 files, three tries each for the naive agent.</p>
+</section>
+{% endif %}
+{% endblock %}

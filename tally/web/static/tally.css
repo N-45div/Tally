@@ -49,3 +49,37 @@ button.secondary { background: transparent; color: var(--fg); border-color: var(
 button.link { background: none; color: var(--accent); padding: 0; border: 0; text-decoration: underline; }
 .ledger .detail { font-family: ui-monospace, monospace; font-size: 0.8rem; overflow-wrap: anywhere; max-width: 480px; }
 details summary { cursor: pointer; color: var(--accent); }
+
+/* Status colours (fixed, both modes): always shown with an icon and a label, never alone. */
+:root { --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b; --bar: #2a78d6; --hair: #e4e1db; }
+@media (prefers-color-scheme: dark) { :root { --bar: #3987e5; --hair: #34332f; } }
+
+
+.hero { padding: 40px 0 16px; max-width: 760px; }
+.hero.small { padding-top: 24px; }
+.hero h1 { font-size: clamp(1.9rem, 4.5vw, 2.8rem); line-height: 1.15; margin: 4px 0 16px; letter-spacing: -0.01em; }
+.eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.78rem; font-weight: 600; color: var(--quiet); margin: 0; }
+.lede { font-size: 1.1rem; line-height: 1.6; color: var(--fg); margin: 0 0 20px; }
+
+
+
+.small { font-size: 0.82rem; }
+
+.score th { font-weight: 600; } .score thead th { white-space: nowrap; }
+.bars { margin: 16px 0 8px; max-width: 640px; } .bars figcaption { font-weight: 600; margin-bottom: 6px; }
+.bars svg { width: 100%; height: auto; display: block; }
+.bars .base { stroke: var(--hair); stroke-width: 1; }
+.bars .bar { fill: var(--bar); }
+.bars .hit { fill: transparent; }
+.bars text { fill: var(--fg); font-size: 13px; } .bars .value { font-variant-numeric: tabular-nums; }
+
+.cell { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; margin: 1px 2px 1px 0; border-radius: 6px;
+        border: 1px solid var(--line); background: var(--card); font-size: 0.8rem; white-space: nowrap; cursor: default; }
+.cell .i { font-weight: 800; }
+.cell.good .i { color: var(--good); } .cell.warning .i { color: var(--warning); } .cell.serious .i { color: var(--serious); }
+.cell.critical .i { color: var(--critical); } .cell.neutral .i { color: var(--quiet); }
+.cell.critical { border-color: var(--critical); } .cell.serious { border-color: var(--serious); }
+.legend .cell { margin-right: 8px; }
+.grid .group th { background: var(--bg); color: var(--quiet); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 14px; }
+.grid td.tries { white-space: nowrap; }
+.nowrap { white-space: nowrap; }
