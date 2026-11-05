@@ -11,6 +11,7 @@ set -uo pipefail
 REL="$1"
 WWW=/var/www/tally
 DATA=/var/lib/tally/data
+DEMO=/var/lib/tally/demo
 export PATH="$HOME/.local/bin:$PATH" TALLY_GUEST_ROOT="$REL/guest" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 OUT="$WWW/status.txt.new"
 step() { echo; echo "== $*"; }
@@ -24,6 +25,7 @@ Description=Tally web app ($(basename "$REL"))
 
 [Service]
 EnvironmentFile=/etc/tally/web.env
+Environment=TALLY_DEMO=$DEMO
 ExecStart=$REL/.venv/bin/gunicorn --bind 127.0.0.1:8080 --workers 2 --threads 4 --access-logfile - tally.web:from_env()
 Restart=always
 
@@ -44,11 +46,50 @@ Restart=always
 [Install]
 WantedBy=default.target
 EOF
+  # The public demo: its own workspace, its own worker, and a timer that rebuilds it every three hours. The worker is
+  # restarted after a rebuild, since it holds the old database open.
+  cat > "$units/tally-demo-worker.service" <<UNIT
+[Unit]
+Description=Tally demo worker ($(basename "$REL"))
+
+[Service]
+EnvironmentFile=/etc/tally/worker.env
+Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=TALLY_GUEST_ROOT=$REL/guest
+ExecStart=$REL/.venv/bin/python -m tally.pipeline $DEMO
+Restart=always
+
+[Install]
+WantedBy=default.target
+UNIT
+  cat > "$units/tally-demo-reset.service" <<UNIT
+[Unit]
+Description=Rebuild the Tally demo workspace
+
+[Service]
+Type=oneshot
+WorkingDirectory=$REL
+ExecStart=$REL/.venv/bin/python -m lab.demo reset $DEMO
+ExecStartPost=/usr/bin/systemctl --user restart tally-demo-worker
+UNIT
+  cat > "$units/tally-demo-reset.timer" <<UNIT
+[Unit]
+Description=Rebuild the Tally demo workspace every three hours
+
+[Timer]
+OnCalendar=*-*-* 00/3:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  "$REL/.venv/bin/python" -m lab.demo seed "$DEMO"
   systemctl --user daemon-reload
-  systemctl --user enable tally-web tally-worker
-  systemctl --user restart tally-web tally-worker
+  systemctl --user enable tally-web tally-worker tally-demo-worker tally-demo-reset.timer
+  systemctl --user restart tally-web tally-worker tally-demo-worker tally-demo-reset.timer
   sleep 2
-  echo "tally-web: $(systemctl --user is-active tally-web), tally-worker: $(systemctl --user is-active tally-worker)"
+  for u in tally-web tally-worker tally-demo-worker tally-demo-reset.timer; do echo "$u: $(systemctl --user is-active "$u")"; done
+  echo "next demo rebuild: $(systemctl --user list-timers tally-demo-reset.timer --no-legend 2>/dev/null | awk '{print $1, $2, $3}')"
 }
 
 {
