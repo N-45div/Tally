@@ -12,14 +12,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from tally.normalize import bank, iban_ok, key, looks_like, money, to_cents, vendor_key
+from tally.normalize import bank, currency, iban_ok, key, looks_like, money, to_cents, vendor_key
 
 # The fields two readings must agree on, and how each is compared.
 COMPARED = {
     "vendor": lambda r: vendor_key(r.get("vendor_name")),
     "invoice number": lambda r: key(r.get("invoice_number")),
     "purchase order": lambda r: key(r.get("po_number")),
-    "currency": lambda r: key(r.get("currency")),
+    "currency": lambda r: currency(r.get("currency")),
     "total": lambda r: to_cents(r.get("total")),
     "bank details": lambda r: tuple(sorted((k, v) for k, v in bank(r.get("pay_to")).items() if v)),
 }
@@ -83,7 +83,7 @@ def decide(airlock: dict, reading: dict | None, check_reading: dict | None, *, r
 
     facts["invoice_number_key"] = key(reading.get("invoice_number"))
     facts["total_cents"] = to_cents(reading.get("total"))
-    facts["currency"] = key(reading.get("currency"))
+    facts["currency"] = currency(reading.get("currency"))
 
     # Two readings, by two model families, must agree on everything that decides a payment.
     if not check_reading:

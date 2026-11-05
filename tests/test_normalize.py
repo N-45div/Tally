@@ -1,6 +1,6 @@
 import pytest
 
-from tally.normalize import bank, iban_ok, key, looks_like, money, to_cents, vendor_key
+from tally.normalize import bank, currency, iban_ok, key, looks_like, money, to_cents, vendor_key
 
 
 def test_identifiers_compare_on_letters_and_digits():
@@ -42,3 +42,9 @@ def test_lookalike_names_are_noticed():
 def test_bank_details_compare_without_spaces():
     assert bank({"iban": "gb29 nwbk 6016 1331 9268 19", "sort_code": "60-16-13"})["iban"] == "GB29NWBK60161331926819"
     assert bank(None) == {"iban": "", "account_number": "", "sort_code": "", "routing_number": ""}
+
+
+def test_a_currency_is_its_iso_code_whether_printed_as_a_code_or_a_symbol():
+    assert currency("$") == currency("USD") == currency(" usd ") == "USD"
+    assert currency("€") == "EUR" and currency("£") == "GBP" and currency("GBP") == "GBP"
+    assert currency("") == currency(None) == ""

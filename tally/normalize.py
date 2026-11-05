@@ -31,6 +31,16 @@ def to_cents(value) -> int | None:
     return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
+CURRENCY_SYMBOLS = {"$": "USD", "US$": "USD", "€": "EUR", "£": "GBP", "₹": "INR", "¥": "JPY"}
+
+
+def currency(text) -> str:
+    """The currency as its ISO code: "USD", "usd" and "$" are all USD. A bare $ is taken as US dollars, as on most
+    invoices that print one; a purchase order in another dollar currency then shows the difference."""
+    t = str(text or "").strip()
+    return CURRENCY_SYMBOLS.get(t, key(t))
+
+
 def money(cents: int | None) -> str:
     if cents is None:
         return "-"

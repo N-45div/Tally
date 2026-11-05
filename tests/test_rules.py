@@ -132,3 +132,12 @@ def test_the_numbers_must_add_up(store):
 def test_an_invoice_seen_before_is_held(store):
     assert "uploaded before" in run(store, others=lambda v, n: {"same_file": [3], "same_number": [3]})["holds"][0]["text"]
     assert "already invoice #4" in run(store, others=lambda v, n: {"same_file": [], "same_number": [4]})["holds"][0]["text"]
+
+
+def test_a_currency_printed_as_a_symbol_is_the_same_currency(store):
+    # Seen in the FATURA benchmark: one model wrote "$", the other "USD", and the readings counted as different.
+    usd = store.add_po("alice", "PO-777", store.vid, "USD", 500000)
+    reading, check = changed(currency="$", po_number="PO-777"), changed(currency="USD", po_number="PO-777")
+    d = run(store, reading, check=check)
+    assert "second_reading" not in holds(d) and "po" not in holds(d), d["holds"]
+    assert usd
