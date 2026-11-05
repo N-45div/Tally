@@ -143,6 +143,18 @@ UNIT
       > "$WWW/lab/fatura.log" 2>&1 < /dev/null &
     echo "started in the background for $BENCH_VERSION; results at /lab when it finishes"
   fi
+  step "load test"
+  LOAD_VERSION=$(cat "$REL/lab/load.py" "$REL/tally/pipeline.py" "$REL/tally/sandbox/__init__.py" "$REL/tally/extract.py" \
+    | sha256sum | cut -c1-16)
+  if [ "$TESTS" -ne 0 ]; then
+    echo "not run: the tests failed"
+  elif [ "$(cat "$WWW/lab/load.version" 2>/dev/null)" = "$LOAD_VERSION" ]; then
+    echo "up to date for this code ($LOAD_VERSION)"
+  else
+    nohup flock /var/lib/tally/lab.lock sh -c "'$REL/.venv/bin/python' -m lab.load '$WWW/lab' 20 1 2 4 && echo $LOAD_VERSION > '$WWW/lab/load.version'" \
+      > "$WWW/lab/load.log" 2>&1 < /dev/null &
+    echo "started in the background for $LOAD_VERSION; results at /lab when it finishes"
+  fi
   # Keep the five newest releases, and always the one the services run.
   RUNNING=$(grep -o '/opt/tally/releases/[^/]*' "$HOME/.config/systemd/user/tally-web.service" 2>/dev/null | head -1)
   ls -1dt /opt/tally/releases/*/ | tail -n +6 | sed 's#/$##' | grep -vxF "${RUNNING:-none}" | xargs -r rm -rf
