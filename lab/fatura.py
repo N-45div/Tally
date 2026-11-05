@@ -204,6 +204,7 @@ def run(out_dir: Path, per_layout: int = 4, workers: int = 4) -> dict:
         rows.append({"name": it["name"], "layout": it["layout"], "background": it["background"], "status": inv["status"],
                      "airlock": (inv["airlock"] or {}).get("verdict"), "fields": fields,
                      "readings_agree": checks.get("second_reading"), "sums_ok": checks.get("sums"),
+                     "why_held": [c["text"] for c in decision["checks"] if not c["ok"] and c["code"] in ("second_reading", "sums")],
                      "models": [(r or {}).get("model") for r in readings.values()],
                      "sandbox_seconds": opened.get("seconds"),
                      "read_seconds": sum((r or {}).get("seconds") or 0 for r in readings.values()),
