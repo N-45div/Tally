@@ -139,6 +139,18 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
                                grid=labdata.grid(latest) if latest else [],
                                fatura=labdata.extra(lab_dir, "fatura.json"), load=labdata.extra(lab_dir, "load.json"))
 
+    @app.get("/lab/log/<name>")
+    def lab_log(name: str):
+        """The last lines of a background run's log (the lab, the benchmark, the load test), so a run can be followed."""
+        files = {"lab": "run.log", "fatura": "fatura.log", "load": "load.log"}
+        if name not in files:
+            abort(404)
+        try:
+            lines = (lab_dir / files[name]).read_text(errors="replace").splitlines()[-80:]
+        except OSError:
+            lines = ["No log yet."]
+        return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; charset=utf-8"}
+
     @app.get("/lab.txt")
     def lab_txt():
         results = lab_dir / "results.txt"

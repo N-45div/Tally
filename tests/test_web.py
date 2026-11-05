@@ -250,3 +250,14 @@ def test_the_lab_page_shows_the_benchmark_and_load_results(tmp_path):
     page = create_app(tmp_path / "data", "s", secure_cookies=False, lab_dir=lab).test_client().get("/lab").data.decode()
     assert "Invoices it has never seen" in page and "1 of 2; the rest would be held" in page and "glm-5.3-flash correct" in page
     assert "How much one host takes" in page and "30.5" in page
+
+
+def test_a_background_run_can_be_followed_by_its_log(tmp_path):
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "fatura.log").write_text("\n".join(f"line {i}" for i in range(200)))
+    c = create_app(tmp_path / "data", "s", secure_cookies=False, lab_dir=lab).test_client()
+    r = c.get("/lab/log/fatura")
+    assert r.status_code == 200 and r.data.decode().splitlines() == [f"line {i}" for i in range(120, 200)]
+    assert c.get("/lab/log/load").data == b"No log yet.\n"
+    assert c.get("/lab/log/..%2F..%2Fetc%2Fpasswd").status_code == 404 and c.get("/lab/log/web").status_code == 404
