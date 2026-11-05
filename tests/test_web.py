@@ -232,3 +232,21 @@ def test_the_queue_counts_invoices_by_status_and_filters_by_it(app):
     page = c.get("/invoices?status=ready").data.decode()
     assert f'href="/invoices/{ready}"' in page and "waiting.pdf" not in page
     assert "waiting.pdf" in c.get("/invoices?status=nonsense").data.decode()  # an unknown filter shows everything
+
+
+def test_the_lab_page_shows_the_benchmark_and_load_results(tmp_path):
+    import json
+    from lab.fatura import FIELDS, summarise
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    cell = lambda ok: {"truth": "x", "reader": "x", "checker": "x", "reader_correct": ok, "checker_correct": ok}  # noqa: E731
+    rows = [{"name": f"T{i}", "fields": {f: cell(i == 0) for f in FIELDS}, "airlock": "clear", "readings_agree": i == 0,
+             "sums_ok": True, "models": ["glm-5.3-flash", "qwen3.8-flash-next"], "sandbox_seconds": 1.3, "usd": 0.005} for i in range(2)]
+    (lab / "fatura.json").write_text(json.dumps({"at": "2026-11-05T21:00:00+00:00", "per_layout": 4, "workers": 4, "rows": rows,
+                                                 "summary": summarise(rows, 60.0)}))
+    (lab / "load.json").write_text(json.dumps({"at": "2026-11-05T21:10:00+00:00", "runs": [
+        {"workers": 4, "invoices": 20, "per_minute": 30.5, "latency_median": 12, "latency_max": 30, "sandbox_first": 2.0,
+         "sandbox_median": 1.4, "ready": 20}]}))
+    page = create_app(tmp_path / "data", "s", secure_cookies=False, lab_dir=lab).test_client().get("/lab").data.decode()
+    assert "Invoices it has never seen" in page and "1 of 2; the rest would be held" in page and "glm-5.3-flash correct" in page
+    assert "How much one host takes" in page and "30.5" in page

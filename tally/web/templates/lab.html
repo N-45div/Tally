@@ -106,6 +106,61 @@
     nothing is approved without a person.</p>
 </section>
 {% endif %}
+{% endif %}
+
+{% if fatura %}
+{% set f = fatura.summary %}
+{% macro pct(n, of) %}{{ (100 * n / of) | round | int if of else 0 }}%{% endmacro %}
+<section id="unseen">
+  <h2>Invoices it has never seen</h2>
+  <p class="quiet">{{ f.invoices }} invoices, {{ fatura.per_layout }} from each of the 50 layouts in
+    <a href="https://doi.org/10.5281/zenodo.10371464">FATURA</a> (Limam, Dhiaf and Kessentini, 2023, CC BY 4.0), half on coloured
+    backgrounds, each as a one-page PDF with no text layer, as a scanned invoice is. Each went through the whole of Tally
+    and each reading was scored against the dataset's own annotations. Run {{ fatura.at[:16] | replace("T", " ") }} UTC.</p>
+  <div class="tiles">
+    <div class="tile"><div class="label">Readings agreed on every field that decides a payment</div>
+      <div class="value">{{ pct(f.readings_agree, f.invoices) }}</div><div class="sub">{{ f.readings_agree }} of {{ f.invoices }}; the rest would be held</div></div>
+    <div class="tile"><div class="label">Total read correctly by both models</div>
+      <div class="value">{{ pct(f.per_field.total.both, f.per_field.total.printed_on) }}</div><div class="sub">of {{ f.per_field.total.printed_on }} invoices that print one</div></div>
+    <div class="tile"><div class="label">Invoice number read correctly by both</div>
+      <div class="value">{{ pct(f.per_field.invoice_number.both, f.per_field.invoice_number.printed_on) }}</div><div class="sub">of {{ f.per_field.invoice_number.printed_on }}</div></div>
+    <div class="tile"><div class="label">Model calls per invoice</div>
+      <div class="value">${{ "%.4f" | format(f.usd_per_invoice or 0) }}</div><div class="sub">two readings; {{ f.invoices_per_minute }} invoices a minute with {{ fatura.workers }} workers</div></div>
+  </div>
+  <table>
+    <thead><tr><th>Field</th><th class="num">Printed on</th><th class="num">{{ (fatura.rows[0].models[0] or "reader") }} correct</th>
+      <th class="num">{{ (fatura.rows[0].models[1] or "checker") }} correct</th><th class="num">Both correct</th></tr></thead>
+    <tbody>
+    {% for name, c in f.per_field.items() if c.printed_on %}
+      <tr><td>{{ name | replace("_", " ") }}</td><td class="num">{{ c.printed_on }}</td>
+        <td class="num">{{ c.reader }} ({{ pct(c.reader, c.printed_on) }})</td><td class="num">{{ c.checker }} ({{ pct(c.checker, c.printed_on) }})</td>
+        <td class="num">{{ c.both }} ({{ pct(c.both, c.printed_on) }})</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="quiet">Tally's sums check passed on {{ f.sums_ok }} of {{ f.invoices }}. The vendor, bank and purchase order rules
+    are not measured here: they need records the dataset does not have.</p>
+</section>
+{% endif %}
+
+{% if load %}
+<section id="load">
+  <h2>How much one host takes</h2>
+  <p class="quiet">The same batch of invoices through the whole pipeline on one Vultr VX1 (2 vCPU, 8 GB), with 1, 2 and 4
+    workers. Waits are from upload to checked, to the second. Run {{ load.at[:16] | replace("T", " ") }} UTC.</p>
+  <table>
+    <thead><tr><th class="num">Workers</th><th class="num">Invoices a minute</th><th class="num">Median wait</th><th class="num">Longest wait</th>
+      <th class="num">First microVM</th><th class="num">Median microVM</th><th class="num">Ready</th></tr></thead>
+    <tbody>
+    {% for r in load.runs %}
+      <tr><td class="num">{{ r.workers }}</td><td class="num">{{ r.per_minute }}</td><td class="num">{{ r.latency_median }} s</td>
+        <td class="num">{{ r.latency_max }} s</td><td class="num">{{ r.sandbox_first }} s</td><td class="num">{{ r.sandbox_median }} s</td>
+        <td class="num">{{ r.ready }} of {{ r.invoices }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
 
 {% if history %}
 <section>
@@ -134,7 +189,7 @@
 <section>
   <h2>Limits of the lab</h2>
   <p>The attack files are Tally's own, not collected from real fraud. The naive agent is one model family, given the text
-    layer only. The numbers are small: 24 files, three tries each for the naive agent.</p>
+    layer only. The numbers are small: 24 files, three tries each for the naive agent. The benchmark's invoices are
+    synthetic too, though in 50 layouts Tally was never shown, and its labels are only as good as the dataset's.</p>
 </section>
-{% endif %}
 {% endblock %}

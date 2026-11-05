@@ -136,7 +136,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
                 share = missed / of if of else 0.0
                 bars.append({"label": label, "missed": missed, "of": of, "pct": round(100 * share), "y": 8 + 40 * i, "w": round(360 * share, 1)})
         return render_template("lab.html", latest=latest, history=history, t=t, bars=bars,
-                               grid=labdata.grid(latest) if latest else [])
+                               grid=labdata.grid(latest) if latest else [],
+                               fatura=labdata.extra(lab_dir, "fatura.json"), load=labdata.extra(lab_dir, "load.json"))
 
     @app.get("/lab.txt")
     def lab_txt():

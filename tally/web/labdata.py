@@ -26,6 +26,14 @@ def load(lab_dir: Path) -> tuple[dict | None, list[dict]]:
     return latest, history
 
 
+def extra(lab_dir: Path, name: str) -> dict | None:
+    """One of the other results the lab publishes (fatura.json, load.json), if it is there."""
+    try:
+        return json.loads((lab_dir / name).read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def totals(history: list[dict]) -> dict | None:
     """Everything added up over the runs so far, for the headline numbers."""
     runs = [h for h in history if h.get("tally")]
