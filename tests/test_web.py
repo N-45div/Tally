@@ -172,3 +172,52 @@ def test_the_lab_results_are_public(tmp_path):
     assert c.get("/lab.json").status_code == 404
     (lab / "results.json").write_text('{"tally": {}}')
     assert c.get("/lab.json").get_json() == {"tally": {}}
+
+
+@pytest.fixture
+def demo_app(tmp_path):
+    from lab.demo import seed
+    seed(tmp_path / "demo")
+    s = Store(tmp_path / "real")
+    s.add_user("setup", "carol", PASSWORD)
+    s.add_invoice("carol", "real-invoice.pdf", b"%PDF-1.7 real")
+    app = create_app(tmp_path / "real", "test-secret", secure_cookies=False, lab_dir=tmp_path / "lab", demo_dir=tmp_path / "demo")
+    app.demo_dir = tmp_path / "demo"
+    return app
+
+
+def test_a_visitor_gets_the_demo_workspace_and_never_the_real_one(demo_app):
+    c = demo_app.test_client()
+    page = c.get("/demo").data.decode()
+    assert "northwind-white-text.pdf" in page and "Start the demo" in page
+    assert c.post("/demo/start", data={}).status_code == 400  # the form token is needed here too
+    r = c.post("/demo/start", data={"csrf": csrf(c)}, follow_redirects=True)
+    page = r.data.decode()
+    assert "Demo workspace" in page and "northwind-october.pdf" in page and "real-invoice.pdf" not in page
+    assert c.get("/account").status_code == 404
+    # Signing in as a real person afterwards leaves the demo.
+    c.post("/login", data={"name": "carol", "password": PASSWORD, "csrf": csrf(c)})
+    page = c.get("/invoices").data.decode()
+    assert "real-invoice.pdf" in page and "northwind-october.pdf" not in page and "Demo workspace" not in page
+
+
+def test_demo_samples_can_be_downloaded_and_nothing_else(demo_app):
+    c = demo_app.test_client()
+    r = c.get("/demo/samples/northwind-october.pdf")
+    assert r.status_code == 200 and r.data[:5] == b"%PDF-" and "attachment" in r.headers["Content-Disposition"]
+    assert c.get("/demo/samples/tally.db").status_code == 404
+    assert c.get("/demo/samples/..%2Ftally.db").status_code == 404
+
+
+def test_demo_uploads_are_capped_per_visitor(demo_app):
+    from io import BytesIO
+    from tally.web import DEMO_PER_VISITOR
+    c = demo_app.test_client()
+    c.post("/demo/start", data={"csrf": csrf(c)})
+    for i in range(DEMO_PER_VISITOR[0]):
+        c.post("/upload", data={"csrf": csrf(c), "files": [(BytesIO(f"%PDF-1.7 {i}".encode()), f"{i}.pdf")]}, content_type="multipart/form-data")
+    r = c.post("/upload", data={"csrf": csrf(c), "files": [(BytesIO(b"%PDF-1.7 more"), "more.pdf")]},
+               content_type="multipart/form-data", follow_redirects=True)
+    assert b"uploads per visitor" in r.data
+    from lab.demo import PRELOADED
+    assert len(Store(demo_app.demo_dir).invoices()) == len(PRELOADED) + DEMO_PER_VISITOR[0]

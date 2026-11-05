@@ -8,11 +8,13 @@ including hidden text quoted from a file, which is a stranger's words.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
 import sqlite3
 import time
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
@@ -27,9 +29,13 @@ from tally.store import Store
 MAX_UPLOAD = 20 * 1024 * 1024
 LOCKOUT_FAILURES = 5
 LOCKOUT_SECONDS = 60
+# The public demo: every upload is opened in a microVM and read by two models, so uploads there are capped.
+DEMO_PER_VISITOR = (5, 600)     # at most 5 uploads in 10 minutes per visitor
+DEMO_PER_HOUR = 40              # and 40 an hour across all visitors
 
 
-def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab_dir: Path = Path("/var/www/tally/lab")) -> Flask:
+def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab_dir: Path = Path("/var/www/tally/lab"),
+               demo_dir: Path | None = None) -> Flask:
     app = Flask(__name__)
     app.config.update(SECRET_KEY=secret_key, MAX_CONTENT_LENGTH=MAX_UPLOAD + 1024 * 1024,
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict", SESSION_COOKIE_SECURE=secure_cookies)
@@ -38,10 +44,20 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
     app.jinja_env.filters["amount"] = lambda v: f"{v:,.2f}" if isinstance(v, (int, float)) and not isinstance(v, bool) else v
     failures: dict[str, tuple[int, float]] = {}
 
+    def in_demo() -> bool:
+        return demo_dir is not None and session.get("workspace") == "demo"
+
     def store() -> Store:
+        """The demo workspace for visitors to the demo, the real one for everyone else. Never both."""
         if "store" not in g:
-            g.store = Store(data_dir)
+            g.store = Store(demo_dir if in_demo() else data_dir)
         return g.store
+
+    def demo_samples() -> list[dict]:
+        try:
+            return json.loads((demo_dir / "samples.json").read_text()) if demo_dir else []
+        except (OSError, ValueError):
+            return []
 
     @app.teardown_appcontext
     def close_store(_exc):
@@ -77,7 +93,30 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
 
     @app.context_processor
     def common():
-        return {"user": user(), "csrf_token": session.get("csrf", "")}
+        return {"user": user(), "csrf_token": session.get("csrf", ""), "in_demo": in_demo(), "demo_on": demo_dir is not None}
+
+    @app.get("/demo")
+    def demo():
+        if demo_dir is None:
+            abort(404)
+        return render_template("demo.html", samples=demo_samples())
+
+    @app.post("/demo/start")
+    def demo_start():
+        if demo_dir is None:
+            abort(404)
+        session.clear()
+        session["csrf"] = secrets.token_urlsafe(32)
+        session["user"] = f"visitor-{secrets.token_hex(2)}"
+        session["workspace"] = "demo"
+        flash("You are in the demo workspace. Upload a sample from the demo page, or your own PDF.")
+        return redirect(url_for("queue"))
+
+    @app.get("/demo/samples/<name>")
+    def demo_sample(name: str):
+        if name not in {x["file"] for x in demo_samples()}:
+            abort(404)
+        return send_file(demo_dir / "samples" / name, mimetype="application/pdf", as_attachment=True)
 
     @app.get("/")
     def home():
@@ -116,7 +155,7 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
             count, until = failures.get(name, (0, 0.0))
             if until > time.time():
                 flash("Too many tries. Wait a minute and try again.")
-            elif store().check_password(name, request.form.get("password", "")):
+            elif Store(data_dir).check_password(name, request.form.get("password", "")):  # people are in the real workspace
                 failures.pop(name, None)
                 session.clear()
                 session["user"] = name
@@ -136,6 +175,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
     @app.route("/account", methods=["GET", "POST"])
     @login_required
     def account():
+        if in_demo():
+            abort(404)
         if request.method == "POST":
             f = request.form
             if f.get("new", "") != f.get("again", ""):
@@ -154,11 +195,28 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
     def queue():
         return render_template("queue.html", invoices=store().invoices())
 
+    def demo_upload_refused() -> str | None:
+        """Why one more upload to the demo would be over its limits, or None."""
+        now = time.time()
+        mine = [t for t in session.get("uploads", []) if now - t < DEMO_PER_VISITOR[1]]
+        session["uploads"] = mine
+        if len(mine) >= DEMO_PER_VISITOR[0]:
+            return f"The demo takes {DEMO_PER_VISITOR[0]} uploads per visitor every {DEMO_PER_VISITOR[1] // 60} minutes. Try again in a few minutes."
+        since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds")
+        if store().db.execute("SELECT COUNT(*) FROM invoices WHERE uploaded_at > ?", (since,)).fetchone()[0] >= DEMO_PER_HOUR:
+            return "The demo has had all the uploads it takes this hour. The samples already in the queue show every step."
+        return None
+
     @app.post("/upload")
     @login_required
     def upload():
         s, added = store(), []
         for f in request.files.getlist("files"):
+            if in_demo():
+                refused = demo_upload_refused()
+                if refused:
+                    flash(refused)
+                    break
             data = f.read(MAX_UPLOAD + 1)
             if not data:
                 continue
@@ -166,6 +224,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
                 flash(f"{f.filename} is larger than {MAX_UPLOAD // (1024 * 1024)} MB and was not added.")
                 continue
             added.append(s.add_invoice(user(), f.filename or "invoice.pdf", data))
+            if in_demo():
+                session["uploads"] = session.get("uploads", []) + [time.time()]
         flash(f"{len(added)} invoice(s) queued." if added else "No file was chosen.")
         return redirect(url_for("queue"))
 
@@ -285,5 +345,6 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
 
 
 def from_env() -> Flask:
+    demo = os.environ.get("TALLY_DEMO")
     return create_app(Path(os.environ["TALLY_DATA"]), os.environ["TALLY_SECRET_KEY"],
-                      secure_cookies=os.environ.get("TALLY_INSECURE_COOKIES") != "1")
+                      secure_cookies=os.environ.get("TALLY_INSECURE_COOKIES") != "1", demo_dir=Path(demo) if demo else None)

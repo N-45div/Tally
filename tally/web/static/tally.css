@@ -104,3 +104,4 @@ a.button.secondary { background: transparent; color: var(--fg); border: 1px soli
 .grid td.tries { white-space: nowrap; }
 .nowrap { white-space: nowrap; }
 @media (max-width: 640px) { .top nav + .signin { margin-left: auto; } }
+.demo-bar { margin: 0; padding: 8px 16px; background: var(--ok-bg); border-bottom: 1px solid var(--line); font-size: 0.9rem; }

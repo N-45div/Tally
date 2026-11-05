@@ -12,6 +12,7 @@
     <a class="brand" href="{{ url_for('home') }}">Tally</a>
     {% if not user %}
     <nav>
+      {% if demo_on %}<a href="{{ url_for('demo') }}">Try the demo</a>{% endif %}
       <a href="{{ url_for('lab') }}">The lab</a>
     </nav>
     <a class="signin" href="{{ url_for('login') }}">Sign in</a>
@@ -25,10 +26,14 @@
     </nav>
     <form method="post" action="{{ url_for('logout') }}" class="logout">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      <a href="{{ url_for('account') }}">{{ user }}</a> <button class="link">Sign out</button>
+      {% if in_demo %}<span>{{ user }}</span> <button class="link">Leave the demo</button>{% else %}<a href="{{ url_for('account') }}">{{ user }}</a> <button class="link">Sign out</button>{% endif %}
     </form>
     {% endif %}
   </header>
+  {% if in_demo %}
+  <p class="demo-bar">Demo workspace: it resets every three hours, and other visitors can see what you upload.
+    <a href="{{ url_for('demo') }}">Sample invoices</a> · <a href="{{ url_for('lab') }}">The lab</a></p>
+  {% endif %}
   <main>
     {% for message in get_flashed_messages() %}<p class="flash">{{ message }}</p>{% endfor %}
     {% block main %}{% endblock %}

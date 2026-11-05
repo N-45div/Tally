@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Try the demo{% endblock %}
+{% block main %}
+<section class="hero small">
+  <p class="eyebrow">Demo</p>
+  <h1>Try Tally with invoices built to fool it.</h1>
+  <p class="lede">The demo is a workspace of its own, rebuilt from scratch every three hours. It already knows one vendor,
+    Northwind Office Supply, with its bank account on file, and two purchase orders. Download a sample below, upload
+    it, and watch what happens to it. Each file is opened in its own microVM and read by two models, as any invoice is.</p>
+  <form method="post" action="{{ url_for('demo_start') }}" class="cta">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button>{{ "Go to the demo invoices" if in_demo else "Start the demo" }}</button>
+  </form>
+  <p class="quiet small">Please do not upload real invoices: anyone in the demo can see them until the next reset.</p>
+</section>
+
+<section>
+  <h2>Sample invoices</h2>
+  {% if samples %}
+  <table>
+    <thead><tr><th>File</th><th>What Tally should do with it</th></tr></thead>
+    <tbody>
+    {% for x in samples %}
+      <tr><td class="nowrap"><a href="{{ url_for('demo_sample', name=x.file) }}">{{ x.file }}</a></td><td>{{ x.what }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="quiet">Every sample is the same Northwind invoice with one thing changed. The full set of 24, and how Tally and
+    a naive AI agent did on each, is in <a href="{{ url_for('lab') }}">the lab</a>.</p>
+  {% else %}
+  <p class="quiet">The samples are being built. Try again in a minute.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -10,7 +10,9 @@
     and a person.</p>
   <div class="cta">
     {% if user %}
-      <a class="button" href="{{ url_for('queue') }}">Open your invoices</a>
+      <a class="button" href="{{ url_for('queue') }}">{{ "Back to the demo invoices" if in_demo else "Open your invoices" }}</a>
+    {% elif demo_on %}
+      <a class="button" href="{{ url_for('demo') }}">Try the demo</a>
     {% else %}
       <a class="button" href="{{ url_for('login') }}">Sign in</a>
     {% endif %}
