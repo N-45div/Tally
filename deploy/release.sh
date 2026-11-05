@@ -138,8 +138,11 @@ UNIT
     echo "not run: the tests failed"
   elif [ "$(cat "$WWW/lab/fatura.version" 2>/dev/null)" = "$BENCH_VERSION" ]; then
     echo "up to date for this code ($BENCH_VERSION)"
+  elif [ "$(cat "$WWW/lab/fatura.queued" 2>/dev/null)" = "$BENCH_VERSION" ]; then
+    echo "already queued for this code ($BENCH_VERSION)"
   else
-    nohup flock /var/lib/tally/lab.lock sh -c "'$REL/.venv/bin/python' -m lab.fatura '$WWW/lab' 4 4 && echo $BENCH_VERSION > '$WWW/lab/fatura.version'" \
+    echo "$BENCH_VERSION" > "$WWW/lab/fatura.queued"
+    nohup flock /var/lib/tally/lab.lock sh -c "'$REL/.venv/bin/python' -m lab.fatura '$WWW/lab' 4 4 && echo $BENCH_VERSION > '$WWW/lab/fatura.version'; rm -f '$WWW/lab/fatura.queued'" \
       > "$WWW/lab/fatura.log" 2>&1 < /dev/null &
     echo "started in the background for $BENCH_VERSION; results at /lab when it finishes"
   fi
@@ -150,8 +153,11 @@ UNIT
     echo "not run: the tests failed"
   elif [ "$(cat "$WWW/lab/load.version" 2>/dev/null)" = "$LOAD_VERSION" ]; then
     echo "up to date for this code ($LOAD_VERSION)"
+  elif [ "$(cat "$WWW/lab/load.queued" 2>/dev/null)" = "$LOAD_VERSION" ]; then
+    echo "already queued for this code ($LOAD_VERSION)"
   else
-    nohup flock /var/lib/tally/lab.lock sh -c "'$REL/.venv/bin/python' -m lab.load '$WWW/lab' 20 1 2 4 && echo $LOAD_VERSION > '$WWW/lab/load.version'" \
+    echo "$LOAD_VERSION" > "$WWW/lab/load.queued"
+    nohup flock /var/lib/tally/lab.lock sh -c "'$REL/.venv/bin/python' -m lab.load '$WWW/lab' 20 1 2 4 && echo $LOAD_VERSION > '$WWW/lab/load.version'; rm -f '$WWW/lab/load.queued'" \
       > "$WWW/lab/load.log" 2>&1 < /dev/null &
     echo "started in the background for $LOAD_VERSION; results at /lab when it finishes"
   fi
