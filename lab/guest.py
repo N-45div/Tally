@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from tally import sandbox
@@ -84,9 +85,11 @@ class _DiskWatch:
         return max(self.lost, 0)
 
 
-def _leftovers() -> list[str]:
+def _still_there(name: str) -> bool:
+    """Whether this attack's own microVM is still listed. Other microVMs on the host (a worker's, a release's tests)
+    are not counted: an earlier version counted those, and reported attacks as not contained that were."""
     done = subprocess.run(["msb", "list"], capture_output=True, text=True, timeout=30)
-    return [line.split()[0] for line in done.stdout.splitlines() if line.startswith("tally-")]
+    return any(line.split()[:1] == [name] for line in done.stdout.splitlines())
 
 
 def run(hidden_pdf: Path, work_dir: Path | None = None) -> list[dict]:
@@ -103,7 +106,8 @@ def run(hidden_pdf: Path, work_dir: Path | None = None) -> list[dict]:
             shutil.copy(job / "preview" / "page-1.png", job / "in" / "page.png")
             started = time.monotonic()
             watch = _DiskWatch(job)
-            ran = sandbox.run_in_guest(["python", "-c", code], [(job / "in", "/in", True), (job / "out", "/out", False)])
+            name = f"tally-lab-{uuid.uuid4().hex[:12]}"
+            ran = sandbox.run_in_guest(["python", "-c", code], [(job / "in", "/in", True), (job / "out", "/out", False)], name=name)
             seconds = time.monotonic() - started
             lost = watch.stop()
             landed = _du(job / "out")
@@ -112,7 +116,7 @@ def run(hidden_pdf: Path, work_dir: Path | None = None) -> list[dict]:
                 checked = "passed the output checks"
             except BadOutput as e:
                 checked = f"refused: {e}"
-            left = _leftovers()
+            left = [name] if _still_there(name) else []
             outcome = ("timed out" if ran is None else ran.stderr if ran.returncode == -1 else f"exited {ran.returncode}") + f" after {seconds:.1f} s"
             results.append({
                 "name": name, "what": what, "outcome": outcome, "checks": checked, "bytes_on_host": landed,

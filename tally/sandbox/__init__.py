@@ -131,14 +131,14 @@ def _exec_watched(name: str, argv: list[str], writable: list[Path]) -> subproces
         return subprocess.CompletedProcess(proc.args, -1 if stopped else proc.returncode, out.read(), stopped or err.read())
 
 
-def run_in_guest(argv: list[str], mounts: list[tuple[Path, str, bool]]) -> subprocess.CompletedProcess | None:
+def run_in_guest(argv: list[str], mounts: list[tuple[Path, str, bool]], name: str | None = None) -> subprocess.CompletedProcess | None:
     """Run one command in a fresh microVM with Tally's limits, then remove the microVM. None if it timed out; a
     returncode of -1, with the reason as stderr, if it was stopped for writing too much.
 
     Every microVM gets the same limits: no network, CPUS, MEMORY, a time limit, and the guest code read-only at
     /opt/tally. `mounts` adds folders as (host path, guest path, read-only).
     """
-    name = f"tally-{uuid.uuid4().hex[:16]}"
+    name = name or f"tally-{uuid.uuid4().hex[:16]}"
     volumes = ["-v", f"{GUEST_ROOT}:/opt/tally:ro"]
     for host, guest, read_only in mounts:
         volumes += ["-v", f"{host}:{guest}:ro"] if read_only else ["--mount-dir", f"{host}:{guest}:quota={QUOTA}"]
