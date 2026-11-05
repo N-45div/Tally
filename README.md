@@ -121,6 +121,58 @@ family, with the text layer only; the numbers are small (24 files, three tries e
 broken-into sandbox that lies consistently passes the output checks (one of the 11 attacks, by design: see Known
 limits).
 
+## Invoices it has never seen
+
+[FATURA](https://doi.org/10.5281/zenodo.10371464) (Limam, Dhiaf and Kessentini, 2023, CC BY 4.0) is 10,000 synthetic
+invoice images in 50 layouts, with every field's printed text annotated. Nothing in Tally was built or tuned on it.
+The benchmark (`lab/fatura.py`) takes four invoices from each layout, half on coloured backgrounds, turns each into a
+one-page PDF with no text layer, as a scanned invoice is, runs it through the whole of Tally on the VX1 host (a
+microVM per file, two readings, the fixed rules), and scores each reading against the annotations. Latest run, 200
+invoices:
+
+| Field | Printed on | GLM correct | Qwen correct | Both correct |
+|---|---|---|---|---|
+| Vendor name | 136 | 100% | 99% | 99% |
+| Invoice number | 176 | 100% | 100% | 100% |
+| Invoice date | 196 | 100% | 100% | 100% |
+| Due date | 116 | 100% | 100% | 100% |
+| Purchase order | 28 | 100% | 100% | 100% |
+| Currency | 160 | 92% | 98% | 91% |
+| Subtotal | 136 | 99% | 99% | 99% |
+| Tax | 76 | 93% | 88% | 83% |
+| Total | 160 | 97% | 96% | 93% |
+
+- The two readings agreed on every field that decides a payment on 155 of 200 (78%); the other 45 would be held for
+  a person. Where they differed: the total, which one model left blank (19); the vendor, on layouts that print it only
+  in a logo or not at all (15); the currency, where only a symbol is printed (15); and a bank account number one
+  model read with a digit missing (2).
+- The benchmark found a bug in Tally: currencies were compared as text, so "$" and "USD" counted as different, which
+  held 20 of the 200 and would have held a "$" invoice against a USD purchase order. They are compared by ISO code now,
+  and agreement went from 73 and 74% in the two runs before to 78%. The readers' instructions were not changed for
+  the benchmark.
+- Tally's sums check passed on 83 of 200. FATURA's amounts do not add up: on none of the 28 layouts that print a
+  subtotal and a total do the subtotal, less any discount, and the tax make the total. Holding those is right, and the
+  benchmark cannot say how often the sums check holds a good invoice.
+- 39 invoices a minute with four workers, and $0.0055 of model calls per invoice.
+
+## How much one host takes, and what it costs
+
+The load test (`lab/load.py`) sends 20 test invoices through the whole pipeline on the VX1 (2 vCPU, 8 GB):
+
+| Workers | Invoices a minute | Median wait, upload to checked | Median time in the microVM |
+|---|---|---|---|
+| 1 | 10.9 | 56.5 s | 1.36 s |
+| 2 | 21.6 | 29.5 s | 1.70 s |
+| 4 | 27.4 | 26.0 s | 3.15 s |
+
+Two workers double the throughput; past that the microVMs compete for the two CPUs. The worker runs with two. The
+first microVM of a run took as long as the rest (1.36 s with one worker), so nothing needs keeping warm. At four
+workers one of the 20 was not ready; the load test now records why.
+
+Model calls cost about $0.0055 an invoice (two readings, at Vultr's $0.55 and $2.75 per million tokens in and out).
+The host is $55.48 a month and at two workers checks about 1,300 invoices an hour, so what it adds per invoice
+depends on use: a team with 1,000 invoices a month pays about $61 a month in all, about 6 cents an invoice.
+
 ## Run the tests
 
 ```bash
@@ -156,6 +208,9 @@ them: its own worker, and a timer that rebuilds its workspace every three hours.
   and clean-looking pages for a bad file) would pass those checks. The rules about vendors, bank details and
   purchase orders do not depend on the sandbox, and nothing is approved without a person.
 - The ledger shows a quiet edit; it cannot stop someone who rewrites the whole database file from the start.
+- The lab samples the host's free disk as a whole, so other work at the same moment (a release installing) can make
+  an attack look like it used more than it did. An earlier version also counted other microVMs as an attack's leftovers
+  and reported four attacks as not contained that were; it now looks for the attack's own microVM by name.
 
 ## License
 
