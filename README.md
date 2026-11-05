@@ -55,6 +55,14 @@ This README grows with the project. The status of each part is stated as it land
   invoices uploaded together (a clean one, one with a hidden instruction, one asking for payment to a new account)
   were opened, read twice and checked in 20 seconds in all. The clean one was ready to approve; the other two were
   held, for the hidden text and for the new account. Two readings cost $0.0046 per invoice.
+- **In public.** The home page says what Tally does and shows the lab's headline numbers; `/lab` shows every attack
+  file in every run, with a status for Tally and each of the naive agent's tries; `/demo` lets anyone try it without
+  an account. None of the pages runs JavaScript.
+- **The demo.** A workspace of its own, apart from the real one, with its own worker: the lab's vendor and purchase
+  orders, seven sample invoices to download and upload (each says what Tally should do with it), and three already
+  processed. Visitors are signed in as `visitor-xxxx`, can do everything a person can, and are told it is shared.
+  Uploads are capped (five per visitor in ten minutes, forty an hour), and the workspace is rebuilt every three
+  hours.
 
 ## The lab: how Tally is attacked
 
@@ -136,7 +144,8 @@ python deploy/host.py status    # prints the host's latest checks
 The host opens only ports 80 and 443, has SSH turned off, and serves the web app over HTTPS with Caddy. Each
 release is installed, tested and probed, and the output is published at `/status.txt`. On the host every test runs,
 with none skipped: the microVM, containment, live model and end-to-end ones too. A release replaces the running
-web app and worker only if all of its tests pass; otherwise the previous release keeps running.
+web app and worker only if all of its tests pass; otherwise the previous release keeps running. The demo runs beside
+them: its own worker, and a timer that rebuilds its workspace every three hours.
 
 ## Known limits
 
