@@ -55,10 +55,12 @@ def one_run(invoices: int, workers: int) -> dict:
         return {"workers": workers, "invoices": invoices, "wall_seconds": round(wall, 1),
                 "per_minute": round(60 * invoices / wall, 1) if wall else None,
                 "ready": statuses.count("ready"), "other": len(statuses) - statuses.count("ready"),
-                "latency_median": statistics.median(latencies) if latencies else None,
+                "latency_median": round(statistics.median(latencies), 1) if latencies else None,
                 "latency_max": max(latencies) if latencies else None,
                 "sandbox_first": sandbox[0] if sandbox else None,
-                "sandbox_median": statistics.median(sandbox) if sandbox else None, "usd": round(usd, 4)}
+                "sandbox_median": round(statistics.median(sandbox), 2) if sandbox else None, "usd": round(usd, 4),
+                "not_ready": [store.invoice(i)["decision"]["holds"] if store.invoice(i)["decision"] else store.invoice(i)["note"]
+                              for i in ids if store.invoice(i)["status"] != "ready"]}
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
