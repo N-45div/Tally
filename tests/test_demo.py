@@ -31,3 +31,11 @@ def test_reset_starts_again_and_never_removes_a_folder_that_is_not_a_demo(tmp_pa
     with pytest.raises(SystemExit, match="does not look like a demo"):
         reset(other)
     assert (other / "tally.db").read_text() == "the real workspace"
+
+
+def test_the_demo_is_never_built_in_the_repository_or_an_empty_path():
+    from pathlib import Path
+    repo = Path(__file__).resolve().parent.parent
+    for bad in (Path(""), Path("."), repo, repo / "somewhere"):
+        with pytest.raises(SystemExit, match="refusing"):
+            seed(bad)

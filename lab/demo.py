@@ -35,7 +35,16 @@ SAMPLES = [
 PRELOADED = ("clean", "hidden: white on white", "visible: new bank details")
 
 
+def _check(demo_dir: Path) -> None:
+    """A demo workspace is a folder of its own: never the current folder by accident, never inside the repository."""
+    here = Path(__file__).resolve().parent.parent
+    target = demo_dir.resolve()
+    if str(demo_dir) in ("", ".") or target == here or here in target.parents:
+        raise SystemExit(f"refusing to build a demo workspace in {target}: give a folder outside the repository")
+
+
 def seed(demo_dir: Path) -> None:
+    _check(demo_dir)
     if (demo_dir / "tally.db").exists():
         return
     by_name = {a.name: a for a in ATTACKS}
@@ -65,6 +74,7 @@ def seed(demo_dir: Path) -> None:
 
 def reset(demo_dir: Path) -> None:
     """Remove everything in the demo workspace and build it again. Refuses a folder that is not a demo workspace."""
+    _check(demo_dir)
     if demo_dir.exists():
         if not (demo_dir / "samples.json").exists():
             raise SystemExit(f"{demo_dir} does not look like a demo workspace; not removing it")
