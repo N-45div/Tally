@@ -40,7 +40,7 @@ Description=Tally worker ($(basename "$REL"))
 EnvironmentFile=/etc/tally/worker.env
 Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=TALLY_GUEST_ROOT=$REL/guest
-ExecStart=$REL/.venv/bin/python -m tally.pipeline $DATA
+ExecStart=$REL/.venv/bin/python -m tally.pipeline $DATA 2
 Restart=always
 
 [Install]
