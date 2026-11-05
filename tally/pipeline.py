@@ -1,6 +1,6 @@
 """One invoice, start to finish: open it in a microVM, read it twice, run the fixed rules, record every step.
 
-    python -m tally.pipeline <data_dir>     work through the queue until stopped
+    python -m tally.pipeline <data_dir> [workers]     work through the queue until stopped, with that many workers
 
 This worker is the only part of Tally that holds the model key. The web app only queues files and records
 decisions; it never opens a file and never calls a model.
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -68,8 +69,11 @@ def process(store: Store, invoice_id: int) -> None:
     store.save_result(WORKER, invoice_id, airlock=report, reading=reading, check_reading=check, decision=recheck(store, inv))
 
 
-def work(store: Store, poll_seconds: float = 2.0, once: bool = False) -> None:
-    store.requeue_unfinished(WORKER)
+def work(store: Store, poll_seconds: float = 2.0, once: bool = False, requeue: bool = True) -> None:
+    """Take invoices from the queue one at a time until it is empty (once) or for ever. Several of these can run at
+    once on the same data folder, each with its own Store: taking an invoice is one atomic step."""
+    if requeue:
+        store.requeue_unfinished(WORKER)
     while True:
         invoice_id = store.claim_next()
         if invoice_id is None:
@@ -83,7 +87,21 @@ def work(store: Store, poll_seconds: float = 2.0, once: bool = False) -> None:
             store.fail(WORKER, invoice_id, f"{type(e).__name__}: {e}")
 
 
+def work_in_parallel(data_dir: Path, workers: int, once: bool = False) -> None:
+    """`workers` workers on one queue, each in its own thread with its own database connection. Invoices a stopped
+    worker left half-done are put back once, before any of them starts."""
+    Store(data_dir).requeue_unfinished(WORKER)
+    def one_worker():  # the connection is opened in the thread that uses it, as SQLite requires
+        work(Store(data_dir), once=once, requeue=False)
+
+    threads = [threading.Thread(target=one_worker, daemon=True) for _ in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("usage: python -m tally.pipeline <data_dir>")
-    work(Store(Path(sys.argv[1])))
+    if len(sys.argv) not in (2, 3):
+        sys.exit("usage: python -m tally.pipeline <data_dir> [workers]")
+    work_in_parallel(Path(sys.argv[1]), int(sys.argv[2]) if len(sys.argv) == 3 else 1)

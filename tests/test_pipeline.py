@@ -67,3 +67,13 @@ def test_three_invoices_end_to_end(store, tmp_path):
     assert store.decide("carol", clean, True, "", recheck=lambda i: recheck(store, i))["status"] == "approved"
     assert ledger.entries(store.db, clean)[-1]["detail"]["pay_to"]["iban"] == "GB29NWBK60161331926819"
     assert ledger.verify(store.db)[0]
+
+
+def test_several_workers_never_take_the_same_invoice(store, tmp_path, monkeypatch):
+    from tally.pipeline import work_in_parallel
+    monkeypatch.setenv("PATH", str(tmp_path))  # no msb: each invoice fails at once, which is enough to count them
+    ids = [_upload(store, tmp_path, f"{i}.pdf", invoice_number=f"INV-{i}") for i in range(12)]
+    work_in_parallel(store.dir, workers=4, once=True)
+    fails = [e for e in ledger.entries(store.db) if e["kind"] == "failed"]
+    assert sorted(e["invoice_id"] for e in fails) == sorted(ids)  # each invoice handled exactly once
+    assert all(store.invoice(i)["status"] == "failed" for i in ids)
