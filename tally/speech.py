@@ -1,0 +1,156 @@
+"""Speech for the desk device: what a person says to it, as text, and what it says back, as audio.
+
+Both go through Vultr Serverless Inference, with the same key as the reader (tally.vultr), and only the desk worker
+(tally.desk) calls them; the web app never does. Speech in is the person's own words; speech out is text written by
+Tally's code (tally.desk), never by a model, so a model here only turns sound into text and text into sound.
+
+Models, all under licences that allow this use, tried in order:
+- speech to text: IBM Granite Speech 5.0 2B (Apache-2.0), then Whisper Large V3 Turbo (MIT), then Qwen3-ASR 1.7B
+  (Apache-2.0). Granite writes numbers as digits, which matters for "invoice 12".
+- text to speech: Qwen3-TTS 12Hz 1.7B (Apache-2.0), then Chatterbox (MIT). Both return 24 kHz mono WAV.
+"""
+from __future__ import annotations
+
+import io
+import json
+import time
+import urllib.error
+import urllib.request
+import uuid
+import wave
+from dataclasses import dataclass, field
+
+from tally.vultr import BASE_URL, InferenceError, _key
+
+LISTEN_MODELS = ["granite-speech-5.0-2b", "whisper-large-v3-turbo", "qwen3-asr-1.7b"]
+SPEAK_MODELS = [("qwen3-tts-12hz-1.7b", "ryan"), ("chatterbox", "default")]
+# Vultr's published prices: per second of audio heard, and per second of audio spoken.
+USD_PER_SECOND_HEARD = {"granite-speech-5.0-2b": 0.00000555, "whisper-large-v3-turbo": 0.00001111, "qwen3-asr-1.7b": 0.0000075}
+USD_PER_SECOND_SPOKEN = 0.00028
+MAX_SPOKEN_CHARS = 1500
+
+
+@dataclass
+class Heard:
+    text: str
+    model: str
+    seconds: float          # how long the call took
+    audio_seconds: float    # how long the recording was
+    attempts: list[str] = field(default_factory=list)
+
+    @property
+    def usd(self) -> float:
+        return self.audio_seconds * USD_PER_SECOND_HEARD.get(self.model, 0.0)
+
+
+@dataclass
+class Spoken:
+    wav: bytes              # 16-bit mono PCM WAV with a plain 44-byte header
+    model: str
+    voice: str
+    seconds: float
+    audio_seconds: float
+    attempts: list[str] = field(default_factory=list)
+
+    @property
+    def usd(self) -> float:
+        return self.audio_seconds * USD_PER_SECOND_SPOKEN
+
+
+def wav_info(data: bytes) -> tuple[int, int, int, float]:
+    """(sample rate, channels, bits, seconds) of a WAV file, or ValueError if it is not a readable PCM WAV."""
+    try:
+        with wave.open(io.BytesIO(data)) as w:
+            rate, channels, width, frames = w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes()
+    except (wave.Error, EOFError) as e:
+        raise ValueError(f"not a PCM WAV file: {e}") from None
+    if not rate:
+        raise ValueError("not a PCM WAV file: no sample rate")
+    return rate, channels, 8 * width, frames / rate
+
+
+def _plain_wav(data: bytes) -> tuple[bytes, float]:
+    """The same sound as 16-bit mono with a plain header (some encoders add chunks a small device would trip on)."""
+    rate, channels, bits, seconds = wav_info(data)
+    if bits != 16 or channels != 1:
+        raise ValueError(f"expected 16-bit mono speech, got {bits}-bit, {channels} channel(s)")
+    with wave.open(io.BytesIO(data)) as w:
+        frames = w.readframes(w.getnframes())
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(frames)
+    return out.getvalue(), seconds
+
+
+def _post(path: str, body: bytes, content_type: str, timeout: float) -> bytes:
+    req = urllib.request.Request(BASE_URL + path, data=body, headers={"Authorization": f"Bearer {_key()}", "Content-Type": content_type})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def _multipart(fields: dict[str, str], name: str, data: bytes, content_type: str) -> tuple[bytes, str]:
+    boundary = uuid.uuid4().hex
+    out = b"".join(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode() for k, v in fields.items())
+    out += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n"
+            f"Content-Type: {content_type}\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
+    return out, f"multipart/form-data; boundary={boundary}"
+
+
+def _tries(models, tries_per_model: int, call):
+    """Run `call(model)` on each model in turn, a couple of times each, until one gives a usable answer."""
+    attempts: list[str] = []
+    for model in models:
+        label = model[0] if isinstance(model, tuple) else model
+        for attempt in range(tries_per_model):
+            started = time.monotonic()
+            try:
+                result = call(model)
+            except urllib.error.HTTPError as e:
+                attempts.append(f"{label}: HTTP {e.code}")
+                if e.code in (401, 403):
+                    raise InferenceError("the inference key was refused") from None
+                time.sleep(1.0 * (attempt + 1))
+                continue
+            except (urllib.error.URLError, TimeoutError) as e:
+                attempts.append(f"{label}: {type(e).__name__}")
+                continue
+            except ValueError as e:
+                attempts.append(f"{label}: {e}")
+                continue
+            attempts.append(f"{label}: ok")
+            return result, label, time.monotonic() - started, attempts
+    raise InferenceError("no speech model gave a usable answer: " + "; ".join(attempts))
+
+
+def transcribe(wav: bytes, models: list[str] | None = None, *, timeout: float = 30.0) -> Heard:
+    """What was said in a WAV recording, as text. An empty transcript is an answer, not an error."""
+    _, _, _, audio_seconds = wav_info(wav)
+
+    def call(model):
+        body, ctype = _multipart({"model": model, "response_format": "json", "language": "en"}, "question.wav", wav, "audio/wav")
+        d = json.loads(_post("/audio/transcriptions", body, ctype, timeout))
+        if not isinstance(d, dict) or not isinstance(d.get("text"), str):
+            raise ValueError("no text in the reply")
+        return d["text"].strip()
+
+    text, model, seconds, attempts = _tries(models or LISTEN_MODELS, 2, call)
+    return Heard(text, model, seconds, audio_seconds, attempts)
+
+
+def speak(text: str, models: list[tuple[str, str]] | None = None, *, timeout: float = 60.0) -> Spoken:
+    """Text as speech, a WAV file the device can play as it is."""
+    text = " ".join(text.split())[:MAX_SPOKEN_CHARS]
+    if not text:
+        raise ValueError("nothing to say")
+
+    def call(model_voice):
+        model, voice = model_voice
+        data = _post("/audio/speech", json.dumps({"model": model, "voice": voice, "input": text, "response_format": "wav"}).encode(),
+                     "application/json", timeout)
+        return _plain_wav(data), voice
+
+    ((wav, audio_seconds), voice), model, seconds, attempts = _tries(models or SPEAK_MODELS, 2, call)
+    return Spoken(wav, model, voice, seconds, audio_seconds, attempts)
