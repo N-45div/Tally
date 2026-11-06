@@ -12,10 +12,11 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import sqlite3
 from collections.abc import Callable
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tally import ledger
@@ -71,8 +72,57 @@ CREATE TABLE IF NOT EXISTS users (
     hash     BLOB NOT NULL,
     added_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS devices (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL UNIQUE,
+    added_by   TEXT NOT NULL,
+    added_at   TEXT NOT NULL,
+    revoked_by TEXT,
+    revoked_at TEXT,
+    last_seen  TEXT,
+    firmware   TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS desk_requests (
+    id          INTEGER PRIMARY KEY,
+    device_id   INTEGER NOT NULL REFERENCES devices(id),
+    at          TEXT NOT NULL,
+    status      TEXT NOT NULL CHECK (status IN ('queued', 'working', 'done', 'failed')),
+    audio_bytes INTEGER NOT NULL,
+    heard       TEXT,
+    intent      TEXT,
+    answer      TEXT,
+    invoice_id  INTEGER,
+    detail      TEXT,
+    done_at     TEXT
+);
+CREATE TABLE IF NOT EXISTS desk_holds (
+    id          INTEGER PRIMARY KEY,
+    invoice_id  INTEGER NOT NULL REFERENCES invoices(id),
+    device_id   INTEGER NOT NULL REFERENCES devices(id),
+    device_name TEXT NOT NULL,
+    at          TEXT NOT NULL,
+    released_by TEXT,
+    released_at TEXT,
+    note        TEXT
+);
+CREATE TABLE IF NOT EXISTS desk_news (
+    id         INTEGER PRIMARY KEY,
+    invoice_id INTEGER NOT NULL REFERENCES invoices(id),
+    ledger_seq INTEGER NOT NULL UNIQUE,
+    at         TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    spoken     INTEGER NOT NULL DEFAULT 0,
+    detail     TEXT
+);
+CREATE TABLE IF NOT EXISTS desk_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 JSON_COLUMNS = ("airlock", "reading", "check_reading", "decision")
+DESK_ASKS_PER_HOUR = 60     # questions one device may send in an hour
+DESK_STATUSES_HELD = ("held", "ready")  # what a desk device may put on hold
 
 
 def _now() -> str:
@@ -81,6 +131,22 @@ def _now() -> str:
 
 def _password_hash(password: str, salt: bytes) -> bytes:
     return hashlib.scrypt(password.encode(), salt=salt, n=2 ** 14, r=8, p=1, dklen=32)
+
+
+def _token_hash(token: str) -> str:
+    """A device token is 256 random bits, so a plain SHA-256 is enough to keep it unusable if the database leaks."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def with_desk_holds(decision: dict, holds: list[dict]) -> dict:
+    """The checks, plus one failed check for each open hold placed from a desk device: such an invoice stays held,
+    whatever the other checks say, until a person releases it."""
+    if not holds:
+        return decision
+    extra = [{"code": "desk", "ok": False, "text": f"Put on hold from the desk device \"{h['device_name']}\" at {h['at']}. "
+                                                  "A person releases it on this page."} for h in holds]
+    return decision | {"ready": False, "checks": decision["checks"] + extra,
+                       "holds": decision["holds"] + [{"code": c["code"], "text": c["text"]} for c in extra]}
 
 
 class Store:
@@ -216,6 +282,7 @@ class Store:
     def save_result(self, actor: str, invoice_id: int, *, airlock: dict, reading: dict | None, check_reading: dict | None, decision: dict) -> None:
         f = decision["facts"]
         with self.tx() as db:
+            decision = with_desk_holds(decision, self._open_desk_holds(db, invoice_id))
             db.execute("UPDATE invoices SET status = ?, airlock = ?, reading = ?, check_reading = ?, decision = ?, vendor_id = ?, po_id = ?,"
                        " invoice_number_key = ?, total_cents = ?, currency = ? WHERE id = ?",
                        ("ready" if decision["ready"] else "held", json.dumps(airlock), json.dumps(reading), json.dumps(check_reading),
@@ -231,7 +298,7 @@ class Store:
                 raise KeyError(f"no invoice {invoice_id}")
             if inv["status"] not in ("held", "ready"):
                 raise ValueError(f"an invoice that is {inv['status']} is not checked again")
-            fresh = recheck(inv)
+            fresh = with_desk_holds(recheck(inv), self._open_desk_holds(db, invoice_id))
             f = fresh["facts"]
             db.execute("UPDATE invoices SET status = ?, decision = ?, vendor_id = ?, po_id = ? WHERE id = ?",
                        ("ready" if fresh["ready"] else "held", json.dumps(fresh), f["vendor_id"], f["po_id"], invoice_id))
@@ -254,7 +321,7 @@ class Store:
             if approve:
                 if inv["status"] != "ready":
                     raise ValueError("only an invoice that passed every check can be approved")
-                fresh = recheck(inv)
+                fresh = with_desk_holds(recheck(inv), self._open_desk_holds(db, invoice_id))
                 if not fresh["ready"]:
                     db.execute("UPDATE invoices SET status = 'held', decision = ? WHERE id = ?", (json.dumps(fresh), invoice_id))
                     ledger.append(db, actor, "held at approval", {"holds": [h["code"] for h in fresh["holds"]]}, invoice_id)
@@ -326,3 +393,191 @@ class Store:
             _password_hash(password, b"\0" * 16)  # same work either way, so timing does not say which names exist
             return False
         return hmac.compare_digest(_password_hash(password, row["salt"]), row["hash"])
+
+    # Desk devices. A device can read the queue and put an invoice on hold, and nothing else: there is no method here
+    # that lets one approve, reject, release or change anything. Each device has its own token, kept only as its
+    # hash, and every question it is asked and every hold it places goes in the ledger.
+
+    def add_device(self, actor: str, name: str) -> tuple[int, str]:
+        """A new device and its token. The token is returned once, here, and never stored."""
+        name = " ".join(str(name or "").split())[:60]
+        if not name:
+            raise ValueError("give the device a name")
+        token = secrets.token_urlsafe(32)
+        with self.tx() as db:
+            did = db.execute("INSERT INTO devices (name, token_hash, added_by, added_at) VALUES (?, ?, ?, ?)",
+                             (name, _token_hash(token), actor, _now())).lastrowid
+            ledger.append(db, actor, "device added", {"device_id": did, "name": name, "may": ["read the queue", "hold an invoice"]})
+        return did, token
+
+    def revoke_device(self, actor: str, device_id: int) -> None:
+        with self.tx() as db:
+            row = db.execute("UPDATE devices SET revoked_by = ?, revoked_at = ? WHERE id = ? AND revoked_at IS NULL RETURNING name",
+                             (actor, _now(), device_id)).fetchone()
+            if row is None:
+                raise KeyError(f"no device {device_id} in use")
+            ledger.append(db, actor, "device revoked", {"device_id": device_id, "name": row[0]})
+
+    def device_for_token(self, token: str) -> dict | None:
+        if not token:
+            return None
+        row = self.db.execute("SELECT * FROM devices WHERE token_hash = ? AND revoked_at IS NULL", (_token_hash(token),)).fetchone()
+        return dict(row) if row else None
+
+    def device(self, device_id: int) -> dict | None:
+        row = self.db.execute("SELECT * FROM devices WHERE id = ?", (device_id,)).fetchone()
+        return dict(row) if row else None
+
+    def devices(self) -> list[dict]:
+        return [dict(r) for r in self.db.execute("SELECT * FROM devices ORDER BY id")]
+
+    def device_seen(self, device_id: int, firmware: str) -> None:
+        """When a device last called in, and with which firmware. Telemetry, not a change to any record, so not in
+        the ledger."""
+        self.db.execute("UPDATE devices SET last_seen = ?, firmware = ? WHERE id = ?", (_now(), firmware[:40], device_id))
+
+    def desk_dir(self) -> Path:
+        d = self.dir / "desk"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def add_desk_request(self, device: dict, wav: bytes) -> int:
+        """A question recorded at a device, queued for the desk worker: one at a time per device, a few an hour."""
+        since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds")
+        with self.tx() as db:
+            if db.execute("SELECT COUNT(*) FROM desk_requests WHERE device_id = ? AND status IN ('queued', 'working')",
+                          (device["id"],)).fetchone()[0]:
+                raise ValueError("this device already has a question being answered")
+            if db.execute("SELECT COUNT(*) FROM desk_requests WHERE device_id = ? AND at > ?", (device["id"], since)).fetchone()[0] >= DESK_ASKS_PER_HOUR:
+                raise ValueError(f"a device can ask {DESK_ASKS_PER_HOUR} questions an hour")
+            rid = db.execute("INSERT INTO desk_requests (device_id, at, status, audio_bytes) VALUES (?, ?, 'queued', ?)",
+                             (device["id"], _now(), len(wav))).lastrowid
+            path = self.desk_dir() / f"asked-{rid}.wav"
+            path.with_suffix(".part").write_bytes(wav)
+            os.replace(path.with_suffix(".part"), path)
+        return rid
+
+    def claim_desk_request(self) -> dict | None:
+        with self.tx() as db:
+            row = db.execute("UPDATE desk_requests SET status = 'working' WHERE id = "
+                             "(SELECT id FROM desk_requests WHERE status = 'queued' ORDER BY id LIMIT 1) RETURNING id").fetchone()
+        return self.desk_request(row[0]) if row else None
+
+    def requeue_desk_requests(self) -> None:
+        """Questions a stopped desk worker left half-answered go back in the queue."""
+        self.db.execute("UPDATE desk_requests SET status = 'queued' WHERE status = 'working'")
+
+    def desk_request(self, request_id: int) -> dict | None:
+        row = self.db.execute("SELECT * FROM desk_requests WHERE id = ?", (request_id,)).fetchone()
+        if row is None:
+            return None
+        r = dict(row)
+        for c in ("intent", "detail"):
+            r[c] = json.loads(r[c]) if r[c] else None
+        return r
+
+    def answer_desk_request(self, request_id: int, *, heard: str, intent: dict | None, answer: str, invoice_id: int | None,
+                            detail: dict, spoken: bytes | None, failed: bool = False) -> None:
+        """Record the answer to a question, and the question, in the ledger. The recording itself is deleted: what
+        was heard is kept as text."""
+        req = self.desk_request(request_id)
+        device = self.device(req["device_id"])
+        if spoken:
+            out = self.desk_dir() / f"answer-{request_id}.wav"
+            out.with_suffix(".part").write_bytes(spoken)
+            os.replace(out.with_suffix(".part"), out)
+        with self.tx() as db:
+            db.execute("UPDATE desk_requests SET status = ?, heard = ?, intent = ?, answer = ?, invoice_id = ?, detail = ?, done_at = ? WHERE id = ?",
+                       ("failed" if failed else "done", heard, json.dumps(intent) if intent else None, answer, invoice_id,
+                        json.dumps(detail), _now(), request_id))
+            ledger.append(db, desk_actor(device), "desk question",
+                          {"device_id": device["id"], "request_id": request_id, "heard": heard, "intent": intent, "answer": answer,
+                           "failed": failed} | detail, invoice_id)
+        (self.desk_dir() / f"asked-{request_id}.wav").unlink(missing_ok=True)
+
+    def hold_from_desk(self, device: dict, invoice_id: int) -> dict:
+        """Put an invoice on hold from a desk device. It stays held, whatever its checks say, until a person releases
+        it on the invoice's page. Holding is the only change a device can make."""
+        with self.tx() as db:
+            inv = self.invoice(invoice_id)
+            if inv is None:
+                raise KeyError(f"no invoice {invoice_id}")
+            if inv["status"] not in DESK_STATUSES_HELD:
+                raise ValueError(f"an invoice that is {inv['status']} cannot be put on hold")
+            if self._open_desk_holds(db, invoice_id):
+                raise ValueError("it is already on hold from a desk device")
+            db.execute("INSERT INTO desk_holds (invoice_id, device_id, device_name, at) VALUES (?, ?, ?, ?)",
+                       (invoice_id, device["id"], device["name"], _now()))
+            base = inv["decision"]
+            base = base | {"checks": [c for c in base["checks"] if c["code"] != "desk"], "holds": [h for h in base["holds"] if h["code"] != "desk"]}
+            decision = with_desk_holds(base, self._open_desk_holds(db, invoice_id))
+            db.execute("UPDATE invoices SET status = 'held', decision = ? WHERE id = ?", (json.dumps(decision), invoice_id))
+            ledger.append(db, desk_actor(device), "held from desk", {"device_id": device["id"], "was": inv["status"]}, invoice_id)
+        return self.invoice(invoice_id)
+
+    def _open_desk_holds(self, db, invoice_id: int) -> list[dict]:
+        return [dict(r) for r in db.execute("SELECT * FROM desk_holds WHERE invoice_id = ? AND released_at IS NULL ORDER BY id", (invoice_id,))]
+
+    def desk_holds(self, invoice_id: int) -> list[dict]:
+        return [dict(r) for r in self.db.execute("SELECT * FROM desk_holds WHERE invoice_id = ? ORDER BY id", (invoice_id,))]
+
+    def release_desk_holds(self, actor: str, invoice_id: int, note: str, recheck: Callable[[dict], dict]) -> dict:
+        """A person lifts the holds placed from desk devices, with a note of why, and the checks run again."""
+        if not note.strip():
+            raise ValueError("say why the hold is lifted")
+        with self.tx() as db:
+            inv = self.invoice(invoice_id)
+            if inv is None:
+                raise KeyError(f"no invoice {invoice_id}")
+            held = self._open_desk_holds(db, invoice_id)
+            if not held:
+                raise ValueError("this invoice has no hold from a desk device")
+            db.execute("UPDATE desk_holds SET released_by = ?, released_at = ?, note = ? WHERE invoice_id = ? AND released_at IS NULL",
+                       (actor, _now(), note.strip(), invoice_id))
+            ledger.append(db, actor, "desk hold released", {"devices": [h["device_name"] for h in held], "note": note.strip()}, invoice_id)
+            if inv["status"] in ("held", "ready"):
+                fresh = recheck(inv)
+                f = fresh["facts"]
+                db.execute("UPDATE invoices SET status = ?, decision = ?, vendor_id = ?, po_id = ? WHERE id = ?",
+                           ("ready" if fresh["ready"] else "held", json.dumps(fresh), f["vendor_id"], f["po_id"], invoice_id))
+                ledger.append(db, actor, "checked again", {"ready": fresh["ready"], "holds": [h["code"] for h in fresh["holds"]]}, invoice_id)
+        return self.invoice(invoice_id)
+
+    def desk_counts(self) -> dict:
+        rows = dict(self.db.execute("SELECT status, COUNT(*) FROM invoices GROUP BY status").fetchall())
+        return {"held": rows.get("held", 0), "ready": rows.get("ready", 0), "waiting": rows.get("queued", 0) + rows.get("processing", 0)}
+
+    # What the devices announce: invoices that have just been held, in words written by code (tally.desk).
+
+    def desk_state(self, key: str) -> str | None:
+        row = self.db.execute("SELECT value FROM desk_state WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_desk_state(self, key: str, value: str) -> None:
+        self.db.execute("INSERT INTO desk_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+
+    def add_desk_news(self, ledger_seq: int, invoice_id: int, text: str) -> int | None:
+        row = self.db.execute("INSERT INTO desk_news (invoice_id, ledger_seq, at, text) VALUES (?, ?, ?, ?) ON CONFLICT(ledger_seq) DO NOTHING RETURNING id",
+                              (invoice_id, ledger_seq, _now(), text)).fetchone()
+        return row[0] if row else None
+
+    def unspoken_news(self) -> list[dict]:
+        return [dict(r) for r in self.db.execute("SELECT * FROM desk_news WHERE spoken = 0 ORDER BY id")]
+
+    def news_spoken(self, news_id: int, wav: bytes | None, detail: dict) -> None:
+        """The announcement's audio is ready (or, with no audio, it is shown as text only)."""
+        if wav:
+            out = self.desk_dir() / f"news-{news_id}.wav"
+            out.with_suffix(".part").write_bytes(wav)
+            os.replace(out.with_suffix(".part"), out)
+        self.db.execute("UPDATE desk_news SET spoken = ?, detail = ? WHERE id = ?", (1 if wav else -1, json.dumps(detail), news_id))
+
+    def news_after(self, after_id: int, limit: int = 5) -> list[dict]:
+        return [dict(r) for r in self.db.execute("SELECT * FROM desk_news WHERE id > ? AND spoken != 0 ORDER BY id LIMIT ?", (after_id, limit))]
+
+    def latest_news_id(self) -> int:
+        return self.db.execute("SELECT COALESCE(MAX(id), 0) FROM desk_news WHERE spoken != 0").fetchone()[0]
+
+
+def desk_actor(device: dict) -> str:
+    return f"desk: {device['name']}"
