@@ -48,7 +48,12 @@
       <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="decision" value="reject">
       <input name="note" placeholder="Why it is rejected" required> <button class="secondary">Reject</button>
     </form>
-    {% if not decision.ready %}
+    {% if desk_holds %}
+    <form method="post" action="{{ url_for('release_desk_hold', invoice_id=inv.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input name="note" placeholder="Why the desk hold is lifted" required> <button class="secondary">Release the desk hold</button>
+    </form>
+    {% elif not decision.ready %}
     <form method="post" action="{{ url_for('check_again', invoice_id=inv.id) }}">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <button class="secondary" title="After adding a vendor or purchase order">Check again</button>

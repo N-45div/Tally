@@ -23,7 +23,7 @@ from flask import Flask, abort, flash, g, redirect, render_template, request, se
 
 from tally import ledger
 from tally.normalize import key, money, to_cents
-from tally.web import labdata
+from tally.web import device as device_api, labdata
 from tally.pipeline import recheck
 from tally.store import Store
 
@@ -79,6 +79,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
 
     @app.before_request
     def csrf():
+        if request.path.startswith("/device/"):
+            return None  # devices send their own token and no cookies; see tally/web/device.py
         session.setdefault("csrf", secrets.token_urlsafe(32))
         if request.method == "POST" and not secrets.compare_digest(request.form.get("csrf", ""), session["csrf"]):
             abort(400, "the form expired; go back and try again")
@@ -267,7 +269,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
         s = store()
         inv = _invoice_or_404(invoice_id)
         vendor = s.vendor(inv["vendor_id"]) if inv["vendor_id"] else None
-        return render_template("invoice.html", inv=inv, vendor=vendor, entries=ledger.entries(s.db, invoice_id))
+        return render_template("invoice.html", inv=inv, vendor=vendor, entries=ledger.entries(s.db, invoice_id),
+                               desk_holds=[h for h in s.desk_holds(invoice_id) if not h["released_at"]])
 
     @app.get("/invoices/<int:invoice_id>/<name>")
     @login_required
@@ -301,6 +304,48 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
         except (ValueError, KeyError) as e:
             flash(str(e).strip("'"))
         return redirect(url_for("invoice", invoice_id=invoice_id))
+
+    @app.post("/invoices/<int:invoice_id>/release")
+    @login_required
+    def release_desk_hold(invoice_id: int):
+        """Only a signed-in person lifts a hold placed from a desk device; the checks then run again."""
+        s = store()
+        try:
+            inv = s.release_desk_holds(user(), invoice_id, request.form.get("note", ""), recheck=lambda i: recheck(s, i))
+            flash("Desk hold released and checked again: " + ("ready to approve." if inv["status"] == "ready" else f"{inv['status']}."))
+        except (ValueError, KeyError) as e:
+            flash(str(e).strip("'").capitalize() + ".")
+        return redirect(url_for("invoice", invoice_id=invoice_id))
+
+    @app.route("/devices", methods=["GET", "POST"])
+    @login_required
+    def devices():
+        """Desk devices: add one (its token is shown once), revoke one, and see what they were asked."""
+        if in_demo():
+            abort(404)
+        s, new = store(), None
+        if request.method == "POST":
+            try:
+                did, token = s.add_device(user(), request.form.get("name", ""))
+                new = {"id": did, "name": s.device(did)["name"], "token": token}
+            except ValueError as e:
+                flash(str(e).capitalize() + ".")
+            except sqlite3.IntegrityError:
+                flash("A device with that name is already on file.")
+        asked = [e for e in reversed(ledger.entries(s.db)) if e["kind"] in ("desk question", "held from desk")][:30]
+        return render_template("devices.html", devices=s.devices(), new=new, asked=asked)
+
+    @app.post("/devices/<int:device_id>/revoke")
+    @login_required
+    def revoke_device(device_id: int):
+        if in_demo():
+            abort(404)
+        try:
+            store().revoke_device(user(), device_id)
+            flash("Device revoked: its token no longer works.")
+        except KeyError:
+            flash("That device is not in use.")
+        return redirect(url_for("devices"))
 
     @app.route("/vendors", methods=["GET", "POST"])
     @login_required
@@ -367,6 +412,7 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
         ok, what = ledger.verify(s.db)
         return render_template("ledger.html", ok=ok, what=what, entries=list(reversed(ledger.entries(s.db)))[:300])
 
+    device_api.register(app, data_dir)
     return app
 
 

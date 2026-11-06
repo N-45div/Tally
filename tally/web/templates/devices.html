@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Devices{% endblock %}
+{% block main %}
+<h1>Desk devices</h1>
+<p class="quiet">A desk device announces invoices as they are held and answers questions about the queue. It can put an
+  invoice on hold and nothing more: it cannot approve, reject or release anything. It speaks only words from Tally's
+  own records (vendor names and phone numbers on file, amounts), never words printed on an invoice. Every question and
+  every hold is in the ledger.</p>
+
+{% if new %}
+<section class="decision ready">
+  <h2>Token for {{ new.name }}</h2>
+  <p>Put this token on the device now. It is shown once and Tally keeps only its hash; if it is lost, revoke the device
+     and add it again.</p>
+  <p><code class="token">{{ new.token }}</code></p>
+  <p class="quiet">With the device on USB: <code>py device/provision.py</code>, then paste the token when it asks.</p>
+</section>
+{% endif %}
+
+<table>
+  <thead><tr><th>Name</th><th>Added</th><th>Last heard from</th><th>Firmware</th><th></th></tr></thead>
+  <tbody>
+  {% for d in devices %}
+    <tr>
+      <td>{{ d.name }}</td>
+      <td>{{ d.added_at }} by {{ d.added_by }}</td>
+      <td>{{ d.last_seen or "never" }}</td>
+      <td>{{ d.firmware }}</td>
+      <td>{% if d.revoked_at %}<span class="quiet">revoked {{ d.revoked_at }} by {{ d.revoked_by }}</span>{% else %}
+        <form method="post" action="{{ url_for('revoke_device', device_id=d.id) }}">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Revoke</button>
+        </form>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="quiet">No devices yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Add a device</h2>
+<form method="post" class="stack narrow">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Name, for the ledger <input name="name" required maxlength="60" placeholder="e.g. Front desk"></label>
+  <button>Add device</button>
+</form>
+
+<h2>What the devices were asked</h2>
+<table class="ledger">
+  <thead><tr><th>When</th><th>Device</th><th>Heard</th><th>Answered</th><th>Invoice</th></tr></thead>
+  <tbody>
+  {% for e in asked %}
+    <tr>
+      <td>{{ e.at }}</td><td>{{ e.actor }}</td>
+      {% if e.kind == "held from desk" %}<td colspan="2"><strong>Put on hold</strong></td>
+      {% else %}<td>{{ e.detail.heard }}</td><td>{{ e.detail.answer }}</td>{% endif %}
+      <td>{% if e.invoice_id %}<a href="{{ url_for('invoice', invoice_id=e.invoice_id) }}">{{ e.invoice_id }}</a>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="quiet">Nothing yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
