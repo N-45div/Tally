@@ -18,3 +18,5 @@ build/
 /pages/
 /samples/
 /samples.json
+# PlatformIO build output and downloaded libraries for device/
+.pio/
