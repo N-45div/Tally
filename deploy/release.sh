@@ -5,7 +5,7 @@
 # It installs the release, prepares its microVM guest, runs Microsandbox's host check and the whole test suite (the
 # microVM, containment, live model and end-to-end tests all run here: this host has KVM and the model key), probes
 # what a guest can reach, and publishes everything it printed at /status.txt. A step that fails is reported, not
-# hidden. Only a release whose tests all pass replaces the running web app and worker; otherwise the previous
+# hidden. Only a release whose tests all pass replaces the running web app and workers; otherwise the previous
 # release keeps running.
 set -uo pipefail
 REL="$1"
@@ -41,6 +41,20 @@ EnvironmentFile=/etc/tally/worker.env
 Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=TALLY_GUEST_ROOT=$REL/guest
 ExecStart=$REL/.venv/bin/python -m tally.pipeline $DATA 2
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+  # The desk worker answers the desk devices' questions and voices their announcements. It calls the speech models,
+  # so it has the worker's settings (the model key); the web app only queues the recordings.
+  cat > "$units/tally-desk.service" <<EOF
+[Unit]
+Description=Tally desk worker ($(basename "$REL"))
+
+[Service]
+EnvironmentFile=/etc/tally/worker.env
+ExecStart=$REL/.venv/bin/python -m tally.desk $DATA
 Restart=always
 
 [Install]
@@ -85,10 +99,10 @@ WantedBy=timers.target
 UNIT
   "$REL/.venv/bin/python" -m lab.demo seed "$DEMO"
   systemctl --user daemon-reload
-  systemctl --user enable tally-web tally-worker tally-demo-worker tally-demo-reset.timer
-  systemctl --user restart tally-web tally-worker tally-demo-worker tally-demo-reset.timer
+  systemctl --user enable tally-web tally-worker tally-desk tally-demo-worker tally-demo-reset.timer
+  systemctl --user restart tally-web tally-worker tally-desk tally-demo-worker tally-demo-reset.timer
   sleep 2
-  for u in tally-web tally-worker tally-demo-worker tally-demo-reset.timer; do echo "$u: $(systemctl --user is-active "$u")"; done
+  for u in tally-web tally-worker tally-desk tally-demo-worker tally-demo-reset.timer; do echo "$u: $(systemctl --user is-active "$u")"; done
   echo "next demo rebuild: $(systemctl --user list-timers tally-demo-reset.timer --no-legend 2>/dev/null | awk '{print $1, $2, $3}')"
 }
 
