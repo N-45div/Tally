@@ -9,7 +9,8 @@ requires-python = ">=3.11"
 # PDF handling is pypdfium2 (Apache-2.0 / BSD) and pypdf (BSD), so the whole project stays MIT-compatible.
 dependencies = [
   "pypdfium2>=4.30",
-  "pypdf>=5.0",
+  # pypdf 7 removed add_js, which the test invoices use; the airlock's active-content checks are tested on 5 and 6.
+  "pypdf>=5.0,<7",
   "pillow>=10.0",
   # The web app (Flask, BSD-3-Clause) and the server it runs under on the host (gunicorn, MIT).
   "flask>=3.0",
