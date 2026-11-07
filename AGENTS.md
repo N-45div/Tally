@@ -57,7 +57,7 @@ These are the product. A change that weakens one needs a very good reason, writt
 | `tally/pipeline.py` | The worker: claim, open in a microVM, read twice, check, record. `python -m tally.pipeline <data_dir> [workers]`. |
 | `tally/web/` | Flask app: home, demo, lab pages, sign-in, queue, invoice review, vendors, purchase orders, ledger, account, devices. `labdata.py` reads the lab's published results; `device.py` is the desk device's calls, by bearer token, never a session. |
 | `device/` | The desk device's firmware (PlatformIO, ESP32-S3 with a mic, speaker and screen) and `provision.py`, which sets its server and token over USB. See `device/README.md`. |
-| `lab/` | Evaluation, not shipped in the package: `attacks.py` (24 attack files with expected outcomes), `naive.py` (a text-layer agent with a pay tool, to compare with), `guest.py` (11 attacks from inside the microVM), `run_tally.py`, `__main__.py` (`python -m lab`), `fatura.py` (the FATURA benchmark), `load.py` (the load test), `demo.py` (builds the public demo workspace). |
+| `lab/` | Evaluation, not shipped in the package: `attacks.py` (24 attack files with expected outcomes), `naive.py` (a text-layer agent with a pay tool, to compare with), `guest.py` (11 attacks from inside the microVM), `run_tally.py`, `__main__.py` (`python -m lab`), `fatura.py` (the FATURA benchmark), `load.py` (the load test), `demo.py` (builds the public demo workspace), `desk_local.py` (Tally on a laptop for the desk device). |
 | `deploy/` | `host.py` (create a host, push a release, read status), `host-setup.sh` (first boot, as root), `release.sh` (every release, as the tally user), `agent.py` (the deploy endpoint), `lab-latest.sh` (runs the lab on the live release). |
 | `tests/` | Everything above. `invoices.py` builds the test invoices, including the attacks. |
 
@@ -86,12 +86,12 @@ Without KVM the worker cannot open anything: uploads fail with "no sandbox could
 pages with data locally, a throwaway script can fill a data folder with the airlock run in-process on files you built
 yourself; never do that with a file from anyone else, and never put it in the repository.
 
-The desk worker needs no KVM, only the model key, so the desk device can be tried against a laptop: run the web app
-on the local network (`create_app(...).run(host="0.0.0.0", port=...)` in a throwaway script, with `tally.desk.work`
-in a thread), add a device with `Store.add_device`, and point the board at `http://<laptop>:<port>` with
-`device/provision.py`. Invoices for it can be saved as the worker would leave them, from a reading you write, so no
-file is opened. On Windows, pytest has two failures of its own: path separators in `test_sandbox`, and symlinks
-needing a privilege in `test_sandbox_check`.
+The desk worker needs no KVM, only the model key, so the desk device can be tried against a laptop with
+`lab/desk_local.py`: `seed` a folder outside the repository (records, a person, a device and its token), `serve` it
+on the local network with the desk worker beside it, `add ready|bank|lookalike` invoices (saved from a reading the
+script writes, so no file is opened), and point the board at `http://<laptop>:8765` with `device/provision.py`. On
+Windows, pytest has two failures of its own: path separators in `test_sandbox`, and symlinks needing a privilege in
+`test_sandbox_check`.
 
 ## The host
 

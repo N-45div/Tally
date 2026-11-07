@@ -40,6 +40,21 @@ ArduinoJson 7.4.3.
    It asks for the token at a hidden prompt, sends it to the board, and prints the board's status. The token stays
    in the board's own storage and is never printed. The Wi-Fi network must be 2.4 GHz.
 
+### Without the host: Tally on a laptop
+
+The device can be tried against a laptop on the same network. The desk worker needs only the model key, and the
+invoices are written as readings, so no file is opened and no microVM is needed:
+
+```bash
+python -m lab.desk_local ~/tally-desk-local seed                 # records, a person, a device and its token
+python -m lab.desk_local ~/tally-desk-local serve                # on port 8765, with VULTR_INFERENCE_API_KEY set
+TALLY_DEVICE_TOKEN=$(cat ~/tally-desk-local/device-token.txt) py provision.py --server http://<laptop's address>:8765
+python -m lab.desk_local ~/tally-desk-local add bank             # an invoice held for a new bank account: announced
+```
+
+On Windows, the firewall asks whether Python may take connections: allow it, on Public networks too if the Wi-Fi is
+marked Public.
+
 The screen shows the queue's counts (held, ready, waiting), the last thing said, and "Hold BOOT to ask" once it
 reaches Tally. A green dot means the last call to Tally worked; yellow, it did not; red, no Wi-Fi.
 

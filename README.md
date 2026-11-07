@@ -218,10 +218,11 @@ python deploy/host.py status    # prints the host's latest checks
 ```
 
 The host opens only ports 80 and 443, has SSH turned off, and serves the web app over HTTPS with Caddy. Each
-release is installed, tested and probed, and the output is published at `/status.txt`. On the host every test runs,
-with none skipped: the microVM, containment, live model and end-to-end ones too. A release replaces the running
-web app and worker only if all of its tests pass; otherwise the previous release keeps running. The demo runs beside
-them: its own worker, and a timer that rebuilds its workspace every three hours.
+release is installed, tested and probed, and the output is published at `/status.txt`, step by step. On the host
+every test runs, with none skipped: the microVM, containment, live model, live speech and end-to-end ones too. A
+release replaces the running web app and workers (the invoice worker and the desk worker) only if all of its tests
+pass; otherwise the previous release keeps running. The demo runs beside them: its own worker, and a timer that
+rebuilds its workspace every three hours.
 
 ## Known limits
 
