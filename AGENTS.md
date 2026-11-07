@@ -35,6 +35,10 @@ These are the product. A change that weakens one needs a very good reason, writt
    is escaped by the templates. Every form carries a token; cookies are SameSite=Strict and HttpOnly.
 9. **The demo never sees the real workspace.** Visitor sessions use `TALLY_DEMO`'s store; people sign in against the
    real one only.
+10. **A desk device can read and hold, never approve.** Each device has its own token, kept as a hash. Its calls in
+    `tally/web/device.py` are the whole list, and the store offers a device nothing that approves, rejects or
+    releases. The model that sorts a spoken question sees only the person's words; answers are written by code from
+    records, and nothing printed on an invoice is spoken. Every question and every hold goes in the ledger.
 
 ## Map of the code
 
@@ -42,14 +46,17 @@ These are the product. A change that weakens one needs a very good reason, writt
 |---|---|
 | `tally/airlock/` | Runs inside the guest only. `inspect.py` is the entry point (`python -m tally.airlock.inspect <pdf> <out>`); `hidden.py` finds text a person cannot see (per-character checks with pypdfium2); `active.py` finds JavaScript, launch and submit actions, embedded files, XFA, encryption (pypdf). Limits: 20 MB, 10 pages, 150 dpi, 40 Mpx per page, checked before any page is drawn. |
 | `tally/sandbox/` | `__init__.py`: one Microsandbox microVM per file (`run_in_guest`, `open_invoice`): `--no-net`, 1 CPU, 512 MB, 60 s, a 512 MB guest disk, a 251 MB quota on `/out`, the guest code read-only, removed afterwards, plus a host-side watch that stops a guest writing too much. `check.py`: the output checks. `probe.py`: what a guest can reach (network by data, not connect; fail-closed). `__main__.py`: `prepare`, `doctor`, `open`, `probe`. |
-| `tally/vultr.py` | The only place a model is called: Vultr Serverless Inference, JSON that must match a schema, tried across models, with the cost of each call. |
+| `tally/vultr.py` | Where a chat model is called: Vultr Serverless Inference, JSON that must match a schema, tried across models, with the cost of each call. |
+| `tally/speech.py` | Speech for the desk device, on the same service: Granite Speech, then Whisper, then Qwen3-ASR to listen; Qwen3-TTS, then Chatterbox to speak (licences in the docstring). Only the desk worker calls it. |
+| `tally/desk.py` | The desk worker (`python -m tally.desk <data_dir>`): hears a question, sorts it into a fixed menu, answers from records, holds an invoice if told to, and writes and voices an announcement for each new hold. |
 | `tally/extract.py` | The reader: page images to fixed fields. Reader models GLM then Qwen; the checker is always the other family. |
 | `tally/normalize.py` | Exact comparison: cents, identifiers, IBAN check digits, vendor names without company suffixes, lookalike names, currencies by ISO code. |
 | `tally/rules.py` | Every check, reported passed or not: airlock, read, second reading, vendor, IBAN, bank, purchase order, sums, duplicate. |
-| `tally/store.py` | SQLite: vendors, purchase orders, invoices, users. Every change writes its ledger entry in the same transaction. |
+| `tally/store.py` | SQLite: vendors, purchase orders, invoices, users, desk devices, their questions, holds from the desk, announcements. Every change writes its ledger entry in the same transaction. |
 | `tally/ledger.py` | The hash-chained ledger. |
 | `tally/pipeline.py` | The worker: claim, open in a microVM, read twice, check, record. `python -m tally.pipeline <data_dir> [workers]`. |
-| `tally/web/` | Flask app: home, demo, lab pages, sign-in, queue, invoice review, vendors, purchase orders, ledger, account. `labdata.py` reads the lab's published results. |
+| `tally/web/` | Flask app: home, demo, lab pages, sign-in, queue, invoice review, vendors, purchase orders, ledger, account, devices. `labdata.py` reads the lab's published results; `device.py` is the desk device's calls, by bearer token, never a session. |
+| `device/` | The desk device's firmware (PlatformIO, ESP32-S3 with a mic, speaker and screen) and `provision.py`, which sets its server and token over USB. See `device/README.md`. |
 | `lab/` | Evaluation, not shipped in the package: `attacks.py` (24 attack files with expected outcomes), `naive.py` (a text-layer agent with a pay tool, to compare with), `guest.py` (11 attacks from inside the microVM), `run_tally.py`, `__main__.py` (`python -m lab`), `fatura.py` (the FATURA benchmark), `load.py` (the load test), `demo.py` (builds the public demo workspace). |
 | `deploy/` | `host.py` (create a host, push a release, read status), `host-setup.sh` (first boot, as root), `release.sh` (every release, as the tally user), `agent.py` (the deploy endpoint), `lab-latest.sh` (runs the lab on the live release). |
 | `tests/` | Everything above. `invoices.py` builds the test invoices, including the attacks. |
@@ -79,6 +86,13 @@ Without KVM the worker cannot open anything: uploads fail with "no sandbox could
 pages with data locally, a throwaway script can fill a data folder with the airlock run in-process on files you built
 yourself; never do that with a file from anyone else, and never put it in the repository.
 
+The desk worker needs no KVM, only the model key, so the desk device can be tried against a laptop: run the web app
+on the local network (`create_app(...).run(host="0.0.0.0", port=...)` in a throwaway script, with `tally.desk.work`
+in a thread), add a device with `Store.add_device`, and point the board at `http://<laptop>:<port>` with
+`device/provision.py`. Invoices for it can be saved as the worker would leave them, from a reading you write, so no
+file is opened. On Windows, pytest has two failures of its own: path separators in `test_sandbox`, and symlinks
+needing a privilege in `test_sandbox_check`.
+
 ## The host
 
 A Vultr VX1 (`vx1-g-2c-8g-120s`: 2 vCPU, 8 GB, 120 GB, KVM inside), Ubuntu 24.04, created by
@@ -94,8 +108,8 @@ A Vultr VX1 (`vx1-g-2c-8g-120s`: 2 vCPU, 8 GB, 120 GB, KVM inside), Ubuntu 24.04
   endpoint with the deploy token (the host keeps only its SHA-256). `deploy/release.sh` installs it under
   `/opt/tally/releases/`, prepares its guest, runs `msb doctor` and the whole test suite with the worker's settings,
   probes a guest, and publishes everything at `/status.txt`. Only if every test passes does it replace the services:
-  `tally-web` (gunicorn on 127.0.0.1:8080), `tally-worker` (two workers), `tally-demo-worker`, and
-  `tally-demo-reset.timer` (rebuilds the demo every three hours).
+  `tally-web` (gunicorn on 127.0.0.1:8080), `tally-worker` (two workers), `tally-desk` (the desk worker, with the
+  worker's settings), `tally-demo-worker`, and `tally-demo-reset.timer` (rebuilds the demo every three hours).
 - **Background runs**, one at a time under `/var/lib/tally/lab.lock`, after a passing release: the lab (one waiting
   at most, run on the live release by `lab-latest.sh`, about $0.21 of model calls), the FATURA benchmark (about $1.10,
   only when the airlock, sandbox, reader, rules or benchmark change) and the load test (about $0.30, only when the
@@ -134,6 +148,16 @@ A Vultr VX1 (`vx1-g-2c-8g-120s`: 2 vCPU, 8 GB, 120 GB, KVM inside), Ubuntu 24.04
 - FATURA's amounts do not add up on any of its layouts, so the sums check cannot be judged on it.
 - Two models still disagree on about a fifth of FATURA invoices (a blank total, a vendor only in a logo, a currency
   printed only as a symbol); those are held, which is the safe side.
+- pypdf 7.0 removed `add_js`, which the test invoices use, and every release installs afresh, so it would have
+  failed the host's tests; pypdf is kept below 7 until the airlock is checked on it.
+- The desk board's microphone (INMP441) wanders slowly: 99.9% of a quiet room's recording was below 100 Hz.
+  Scaled to its peak, that drowned speech; the firmware filters below about 50 Hz first.
+- Both voices misread "1042" ("ten forty-two", "one thousand and forty-two"), so spoken numbers are formatted by
+  code: amounts in words for the currency, phone numbers digit by digit.
+- The menu model sometimes files "why is invoice 12 held?" under "held"; a fixed rule moves any question naming an
+  invoice number to that invoice, and a hold counts only if a word for holding was said.
+- On the laptop used for the device, port 8080 belongs to another service, and Windows' firewall blocks Python on a
+  network marked Public until allowed.
 
 ## What has been built, in order
 
@@ -147,16 +171,16 @@ A Vultr VX1 (`vx1-g-2c-8g-120s`: 2 vCPU, 8 GB, 120 GB, KVM inside), Ubuntu 24.04
 - **Nov 5**: the public home page, the lab as a page, the public demo with its own workspace and worker, the review
   page with the invoice beside its checks; parallel workers; the FATURA benchmark, which found the currency
   comparison bug; the load test; one waiting lab run per host instead of one per release.
+- **Nov 6**: pypdf kept below 7; the desk device: speech in and out on Vultr, devices with their own tokens, holds
+  from the desk that only a person releases, the desk worker and its fixed menu, the device calls and the Devices
+  page, live tests against the real speech models, and the firmware, flashed on the board and tested with a person's
+  voice against a laptop running Tally.
 
 Measured results, all from the host, are in the README and live at `/lab`.
 
 ## What is next
 
-- **A desk device**: an ESP32 board with a microphone and speaker that announces held invoices and why ("call them on
-  the number on file") and answers questions about the queue. Speech in and out through Vultr Serverless Inference
-  (speech-to-text and text-to-speech models are available there; check each model's licence before use). The design
-  rule: the device can read and can hold, and can never approve; each device has its own token, stored as a hash,
-  with only those rights; every question and hold goes in the ledger; text from invoices is data to it, never
-  instructions. Server side first (`/device/...` endpoints, a Devices page, tests against the real speech models),
-  then firmware in `device/`, flashed and tested on the actual board.
+- The desk device against the live host over HTTPS, measured there, and its numbers in the README.
+- Faster answers: the voice is about half of the wait; the speech models can stream.
+- Updating the device's firmware over the network instead of USB.
 - A last pass over the README and the pages, a demo video and slides.

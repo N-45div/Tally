@@ -63,6 +63,30 @@ This README grows with the project. The status of each part is stated as it land
   processed. Visitors are signed in as `visitor-xxxx`, can do everything a person can, and are told it is shared.
   Uploads are capped (five per visitor in ten minutes, forty an hour), and the workspace is rebuilt every three
   hours.
+- **The desk device.** A small box on the desk ([device/](device/)) that says when an invoice is held and why ("it
+  asks for payment to a different bank account from the one on file; call them on the number on file, …") and
+  answers questions about the queue: hold its button, ask, let go. It can put an invoice on hold when told to; it
+  cannot approve, pay, reject or release anything, because the server offers a device no call for that, and asking
+  it to is answered with what it can do. A model sorts the spoken question into a fixed menu from the person's words
+  alone; the answer is written by code from Tally's records, so nothing printed on an invoice is ever spoken. Each
+  device has its own token, kept as a hash, and every question and hold is in the ledger. A hold from the desk stays
+  until a person releases it, with a note of why. Speech goes through Vultr: Granite Speech to listen, Qwen3-TTS to
+  speak. Measured on the board (an ESP32-S3 with a microphone, a speaker and a screen) against Tally on a laptop on
+  the same network: it announced a held invoice, and a spoken "How many invoices are held right now?" was heard word
+  for word and answered in 6.8 seconds (1.7 s to listen, 1.2 s to sort, 3.4 s to speak), for $0.0023.
+
+## The desk device: what it can and cannot do
+
+| | |
+|---|---|
+| Read the queue | what is held and why, what is ready, one invoice by its number or vendor, the counts |
+| Announce | each invoice held after the device was added, with the reason; a bank change ends with the vendor's phone number on file |
+| Hold | one held or ready invoice, when told to with a word for holding; it stays held until a person releases it |
+| Approve, pay, reject, release, change records | no: there is no device call for any of it |
+| Repeat words printed on an invoice | no: vendors are named by their names on file, or as "a vendor not on file" |
+
+Limits: push to talk only; anyone at the desk can ask and hold; an answer takes several seconds, about half of it
+the voice being made; the device has been measured against a laptop, not yet against the host.
 
 ## The lab: how Tally is attacked
 
