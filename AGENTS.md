@@ -294,6 +294,11 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
   invoice number to that invoice, and a hold counts only if a word for holding was said.
 - `202 accepted` from the deploy endpoint means the release unpacked, not that it ran (see "When a release does not
   show up").
+- Releases stopped running from Nov 6 to Nov 8 because they were pushed from Windows: Git for Windows sets
+  `core.autocrlf=true`, `git archive` honours it, and bash failed on `release.sh`'s first lines (`set: pipefail:
+  invalid option name`, `` syntax error near unexpected token `$'{\r'' ``) before it could write the status page.
+  Only the deploy journal showed it. `deploy/host.py` now archives with `core.autocrlf=false`, `.gitattributes`
+  keeps `*.sh` LF, and `tests/test_release.py` fails if a release carries CRLF.
 - Windows: when its "allow access?" prompt for Python is dismissed, the firewall adds rules that *block* that
   python.exe on that network type, and a block beats any allow. The board then gets "connection refused" from a
   laptop server. Fix, in an admin PowerShell: `Get-NetFirewallRule -Direction Inbound | Where-Object { $_.DisplayName
@@ -303,20 +308,20 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
 ## Where things stand (Nov 8)
 
 - **Code**: everything for the desk device is committed. The suite passes locally (see Tests).
-- **Board**: firmware `tally-desk/0.1.0`, on the Wi-Fi, mic and speaker working. It has answered spoken questions
-  against Tally on a laptop. It is set to a laptop server (`http://192.168.1.8:8765`); point it at the host with
-  `provision.py` once the host runs the desk code.
-- **Host** (`TALLY_HOST` in the private settings): serves the app, the demo and the lab, but still runs release
-  118c17f from Nov 5, so the device calls are not there (`/device/hello` gives 404). Since Nov 6 every push gets
-  `202` and then the release script stops before writing `/status.txt`; a push of Nov 5's code did the same, and so
-  did a restart. Next step: read the deploy journal from the console (see "When a release does not show up").
+- **Host** (`TALLY_HOST` in the private settings): running again since Nov 8, 15:25 UTC, on release 2f9904b, which
+  passed its whole suite there (175 passed; the one skip is `test_release.py`, which needs a git checkout). The desk
+  worker runs beside the web app and the invoice worker. A spoken question sent to it with the device's token was
+  heard word for word and answered in 8.3 s, end to end from a laptop in India. The person who can sign in is
+  `ndivij` (added from the console; the first user's password from Nov 4 was not kept).
+- **Board**: firmware `tally-desk/0.1.0`, set to the host (`https://$TALLY_HOST`) with the token of the device
+  "Frontdesk", kept in the private settings as `TALLY_DEVICE_TOKEN`. It connects over HTTPS and shows the real
+  workspace's counts.
 
 ### What is next
 
-1. Get the host running releases again, then put the board on it: on the host's **Devices** page add a device, run
-   `provision.py --server https://$TALLY_HOST` with its token, upload an invoice that should be held, ask questions,
-   try "approve invoice N" (refused) and "put invoice N on hold". Take the timings and costs from the ledger's
-   "desk question" entries and replace "not yet measured against the host" in the README.
+1. Measure the board on the host: upload an invoice that should be held, ask questions, try "approve invoice N"
+   (refused) and "put invoice N on hold". Take the timings and costs from the ledger's "desk question" entries and
+   replace "not yet measured against the host" in the README.
 2. Faster answers: the voice is about half of the wait; the speech models can stream.
 3. Updating the device's firmware over the network instead of USB.
 
@@ -339,4 +344,5 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
 - **Nov 7**: `lab/desk_local.py`, so the device can be tried against a laptop; the release page published at every
   step. The host stopped running releases.
 - **Nov 8**: moved to a new laptop (Windows, uv, PlatformIO on D:); the firmware builds there; the README explains how
-  Tally runs on Vultr; this file reorganised so a newcomer can find their way.
+  Tally runs on Vultr; this file reorganised so a newcomer can find their way; the host's stuck releases traced to
+  CRLF line endings from Windows and fixed; the host running the desk code, and the board on it.
