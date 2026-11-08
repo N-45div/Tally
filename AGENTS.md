@@ -158,6 +158,9 @@ A Vultr VX1 (`vx1-g-2c-8g-120s`: 2 vCPU, 8 GB, 120 GB, KVM inside), Ubuntu 24.04
   invoice number to that invoice, and a hold counts only if a word for holding was said.
 - On the laptop used for the device, port 8080 belongs to another service, and Windows' firewall blocks Python on a
   network marked Public until allowed.
+- `202 accepted` from the deploy endpoint means the release unpacked, not that it ran. The endpoint answers before
+  release.sh starts, and release.sh used to write the status page only at its end, so a release that died early left
+  no trace; it now publishes at every step.
 
 ## What has been built, in order
 
@@ -176,11 +179,68 @@ A Vultr VX1 (`vx1-g-2c-8g-120s`: 2 vCPU, 8 GB, 120 GB, KVM inside), Ubuntu 24.04
   page, live tests against the real speech models, and the firmware, flashed on the board and tested with a person's
   voice against a laptop running Tally.
 
+- **Nov 7**: `lab/desk_local.py`, so the device can be tried against a laptop; the release page published at every
+  step. The host stopped running releases (below).
+
 Measured results, all from the host, are in the README and live at `/lab`.
 
-## What is next
+## Where things stand (Nov 8) and what to do next
 
-- The desk device against the live host over HTTPS, measured there, and its numbers in the README.
+**State.** Everything for the desk device is committed, and the suite passes on a laptop (161 passed; two failures
+of Windows' own, see above). The board runs firmware `tally-desk/0.1.0` and has answered a spoken question against a
+laptop. The live host still runs release 118c17f from Nov 5: none of the desk device's server code is live there
+(`/device/hello` returns 404).
+
+### 1. Get the host running releases again (this blocks everything that follows)
+
+What was seen: since Nov 6, `python deploy/host.py push` gets `202 accepted`, but the release never writes
+`/status.txt` and the services are not replaced. It is not the new code: a push of 63f5118 (Nov 5's code) did the
+same. A restart from the Vultr dashboard on Nov 7 did not help. Each release ends within two minutes; a POST to
+`/deploy` with a body that is not a tarball gets `400 could not unpack`, not `409` busy, so nothing is left running.
+The host is otherwise fine: a demo upload was opened in a microVM, read and checked in 12 seconds.
+
+There is no SSH, so look from the instance's web console in the Vultr dashboard (View Console; log in as `root`, the
+password is on the instance's page):
+
+```bash
+journalctl -u tally-deploy -n 60 --no-pager            # the deploy endpoint's own errors
+ls -lt /opt/tally/releases | head                      # did the releases unpack?
+ls -la /var/www/tally                                  # can the tally user write status.txt(.new)?
+df -h /; df -i /                                       # space and inodes
+REL=$(ls -1dt /opt/tally/releases/*/ | head -1); REL=${REL%/}
+runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -x "$REL/deploy/release.sh" "$REL" 2>&1 | head -40
+```
+
+The last line runs the newest release by hand, as the endpoint would, and shows where it stops. Once fixed, push
+again: the status page now shows each step as it runs (commit 96e14f2), so a stuck release shows where it is.
+
+### 2. Put the board on the live host and measure it there
+
+1. Sign in on the host, open **Devices**, add a device, copy the token it shows once.
+2. Board on USB: `py device/provision.py --server https://$TALLY_HOST` (asks for the token at a hidden prompt).
+3. Upload a sample that should be held (e.g. a demo sample with a new bank account, to the real workspace): the board
+   should announce it. Ask it questions; try "approve invoice N" (refused) and "put invoice N on hold".
+4. Take the timings and costs from the Devices page and the ledger (each "desk question" entry has them), and replace
+   "not yet measured against the host" in the README with what was measured.
+
+Without the host, the same can be tried against a laptop with `lab/desk_local.py` (see Run it locally).
+
+### 3. After that
+
 - Faster answers: the voice is about half of the wait; the speech models can stream.
 - Updating the device's firmware over the network instead of USB.
 - A last pass over the README and the pages, a demo video and slides.
+
+### Moving to another laptop
+
+- Clone the repository and set up as in Run it locally (on Windows, `py` runs Python; PlatformIO with
+  `pip install platformio` for the firmware).
+- The private settings are not in the repository: copy the env file (`TALLY_HOST`, `TALLY_DEPLOY_TOKEN`,
+  `TALLY_INSTANCE_ID`, `VULTR_INFERENCE_API_KEY`) to the new laptop, outside the repository, and load it into the shell
+  before deploying. The Vultr account key (`VULTR_API_KEY`) was never in it.
+- The board shows up as a USB serial device (Espressif, USB ID 303A); `py -m esptool flash-id` finds its port. It
+  keeps its Wi-Fi network across flashing, but is set to the first laptop's test server, so set it up again with
+  `device/provision.py`. On Windows, allow Python through the firewall when asked, and if port 8080 is taken, use
+  another (the laptop tool uses 8765).
+- The board's original firmware (a full 16 MB flash backup, `full-flash-before-tally.bin`) is on the first laptop, in
+  `tally-device-backup` in the home folder. Copy it if the board may need to go back; `esptool write-flash 0x0` restores it.
