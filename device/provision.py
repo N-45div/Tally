@@ -5,7 +5,8 @@
     py provision.py --port COM8 --server https://<host>
 
 The token comes from Tally's Devices page, is typed at a hidden prompt, goes only to the board (which keeps it in
-its own storage), and is never printed. Needs pyserial (it comes with esptool and PlatformIO).
+its own storage), and is never printed. Needs pyserial (it comes with esptool and PlatformIO). The token, Wi-Fi name
+and Wi-Fi password can come from TALLY_DEVICE_TOKEN, TALLY_WIFI_NAME and TALLY_WIFI_PASSWORD instead of prompts.
 """
 from __future__ import annotations
 
@@ -52,8 +53,8 @@ def main() -> None:
     with serial.Serial(a.port or find_port(), 115200, timeout=0.5) as port:
         time.sleep(0.5)
         if a.wifi:
-            ssid = input("Wi-Fi name: ").strip()
-            password = getpass.getpass("Wi-Fi password (hidden): ")
+            ssid = os.environ.get("TALLY_WIFI_NAME") or input("Wi-Fi name: ").strip()
+            password = os.environ.get("TALLY_WIFI_PASSWORD") or getpass.getpass("Wi-Fi password (hidden): ")
             if send(port, f"wifi {ssid}\t{password}", wait=30, show=f"wifi {ssid} <password>").startswith("ERR"):
                 sys.exit("the board could not join that network")
         if send(port, f"server {server}").startswith("ERR"):

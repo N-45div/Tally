@@ -42,7 +42,7 @@ Adafruit_ST7735 tft(&SPI, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST);
 Preferences prefs;
 
 struct Settings {
-  String server, token;
+  String server, token, ssid, pass;
   int rotation = 0;
 } settings;
 
@@ -77,6 +77,8 @@ void loadSettings() {
   settings.server = prefs.getString("server", "");
   settings.token = prefs.getString("token", "");
   settings.rotation = prefs.getInt("rotation", 0);
+  settings.ssid = prefs.getString("wifi_ssid", "");
+  settings.pass = prefs.getString("wifi_pass", "");
   prefs.end();
 }
 
@@ -85,6 +87,8 @@ void saveSettings() {
   prefs.putString("server", settings.server);
   prefs.putString("token", settings.token);
   prefs.putInt("rotation", settings.rotation);
+  prefs.putString("wifi_ssid", settings.ssid);
+  prefs.putString("wifi_pass", settings.pass);
   prefs.end();
 }
 
@@ -182,6 +186,7 @@ void setStatus(const String &s) {
 }
 
 String idleLine() {
+  if (!settings.ssid.length()) return "Set Wi-Fi over USB";
   if (!configured()) return "Set up over USB";
   if (WiFi.status() != WL_CONNECTED) return "No Wi-Fi";
   if (lastHttp == 401) return "Token refused";
@@ -428,16 +433,26 @@ void readButton() {
 
 // Wi-Fi.
 
-void connectWifi(const char *ssid = nullptr, const char *pass = nullptr) {
+// The network comes from Tally's own settings (set with provision.py --wifi), never from the Wi-Fi driver's own
+// saved configuration: once that was corrupted, every join crashed the driver (a LoadStoreError in
+// scan_build_chan_list) before the console could be reached. And only this code starts a connection: the library's
+// auto-reconnect is off, because a reconnect started while it was already reconnecting crashed the same way.
+void startWifi() {
+  WiFi.persistent(false);  // the driver keeps nothing in flash
+  WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("tally-desk");
   WiFi.setSleep(false);
-  if (ssid) {
-    WiFi.disconnect();
-    WiFi.begin(ssid, pass);  // saved on the board for next time
-  } else {
-    WiFi.begin();  // the network already saved on the board
+}
+
+void connectWifi() {
+  if (!settings.ssid.length()) {
+    logLine("Wi-Fi: no network set; run provision.py --wifi");
+    setStatus("Set Wi-Fi over USB");
+    return;
   }
+  WiFi.disconnect();
+  WiFi.begin(settings.ssid.c_str(), settings.pass.c_str());
   setStatus("Joining Wi-Fi...");
   uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) delay(200);
@@ -445,7 +460,7 @@ void connectWifi(const char *ssid = nullptr, const char *pass = nullptr) {
     logLine("Wi-Fi \"%s\", %d dBm, %s", WiFi.SSID().c_str(), WiFi.RSSI(), WiFi.localIP().toString().c_str());
     configTime(0, 0, "pool.ntp.org", "time.google.com");
   } else {
-    logLine("Wi-Fi: not connected (saved network: \"%s\")", WiFi.SSID().c_str());
+    logLine("Wi-Fi: not connected to \"%s\" yet", settings.ssid.c_str());
   }
   setStatus(idleLine());
 }
@@ -521,8 +536,10 @@ void command(String line) {
     setStatus(idleLine());
   } else if (cmd == "wifi") {
     int tab = arg.indexOf('\t');
-    String ssid = tab < 0 ? arg : arg.substring(0, tab), pass = tab < 0 ? "" : arg.substring(tab + 1);
-    connectWifi(ssid.c_str(), pass.c_str());
+    settings.ssid = tab < 0 ? arg : arg.substring(0, tab);
+    settings.pass = tab < 0 ? "" : arg.substring(tab + 1);
+    saveSettings();
+    connectWifi();
     Serial.println(WiFi.status() == WL_CONNECTED ? "OK wifi " + WiFi.localIP().toString() : String("ERR wifi: could not join"));
   } else if (cmd == "rotation") {
     settings.rotation = constrain(arg.toInt(), 0, 3);
@@ -580,6 +597,7 @@ void setup() {
   setupAudio();
   logLine("%s: speaker %s, mic %s, %u bytes of PSRAM free", TALLY_FIRMWARE, speakerReady ? "ok" : "FAILED", micReady ? "ok" : "FAILED",
           (unsigned)ESP.getFreePsram());
+  startWifi();
   connectWifi();
   if (WiFi.status() == WL_CONNECTED) chime();
   if (!configured()) logLine("not set up: run provision.py to set the server and the device's token");
@@ -593,8 +611,10 @@ void loop() {
     if (!wifiLostMs) {
       wifiLostMs = millis();
       setStatus("No Wi-Fi");
-    } else if (millis() - wifiLostMs > 15000) {
-      WiFi.reconnect();
+    } else if (millis() - wifiLostMs > 20000 && settings.ssid.length()) {
+      logLine("Wi-Fi: joining \"%s\" again", settings.ssid.c_str());
+      WiFi.disconnect();
+      WiFi.begin(settings.ssid.c_str(), settings.pass.c_str());
       wifiLostMs = millis();
     }
   } else if (wifiLostMs) {

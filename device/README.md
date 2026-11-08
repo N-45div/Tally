@@ -20,7 +20,7 @@ An ESP32-S3 board with 16 MB of flash and 8 MB of PSRAM, an INMP441 microphone, 
 ```bash
 pip install platformio
 cd device
-pio run -t upload        # builds and flashes over USB; the Wi-Fi network saved on the board is kept
+pio run -t upload        # builds and flashes over USB; Tally's settings on the board (server, token, Wi-Fi) are kept
 pio device monitor       # the serial console, 115200
 ```
 
@@ -34,11 +34,12 @@ ArduinoJson 7.4.3.
 2. With the board on USB:
 
    ```bash
-   py provision.py --server https://<your Tally host>          # add --wifi to set the Wi-Fi network too
+   py provision.py --wifi --server https://<your Tally host>
    ```
 
    It asks for the token at a hidden prompt, sends it to the board, and prints the board's status. The token stays
-   in the board's own storage and is never printed. The Wi-Fi network must be 2.4 GHz.
+   in the board's own storage and is never printed. The Wi-Fi network must be 2.4 GHz. `--wifi` asks for its name
+   and password (or takes `TALLY_WIFI_NAME` and `TALLY_WIFI_PASSWORD`); leave it out to keep the network already set.
 
 ### Without the host: Tally on a laptop
 
@@ -89,6 +90,11 @@ accepted for testing on a local network only.
 | `GET /device/ask/<id>?wait=15` | the answer, then its audio |
 
 ## Limits
+
+- From firmware 0.1.1 the board joins only the network set with `provision.py --wifi`, kept in Tally's own
+  settings, and the firmware alone reconnects. With 0.1.0, after the Wi-Fi dropped once, the ESP32's own saved
+  network crashed its Wi-Fi driver on every join (a LoadStoreError in `scan_build_chan_list`), so the board
+  restarted in a loop. A board updated from 0.1.0 needs `provision.py --wifi` once.
 
 - Push to talk only: no wake word.
 - The microphone's output wanders slowly; the firmware filters out everything below about 50 Hz before sending.
