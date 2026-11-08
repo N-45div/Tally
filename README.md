@@ -116,9 +116,13 @@ This README grows with the project. The status of each part is stated as it land
   alone; the answer is written by code from Tally's records, so nothing printed on an invoice is ever spoken. Each
   device has its own token, kept as a hash, and every question and hold is in the ledger. A hold from the desk stays
   until a person releases it, with a note of why. Speech goes through Vultr: Granite Speech to listen, Qwen3-TTS to
-  speak. Measured on the board (an ESP32-S3 with a microphone, a speaker and a screen) against Tally on a laptop on
-  the same network: it announced a held invoice, and a spoken "How many invoices are held right now?" was heard word
-  for word and answered in 6.8 seconds (1.7 s to listen, 1.2 s to sort, 3.4 s to speak), for $0.0023.
+  speak, shaped for the board's 0.25 W speaker (bass below 400 Hz removed, consonants lifted, a 5:1 compressor,
+  levelled to -10 dBFS). Measured on the board (an ESP32-S3 with a microphone and a speaker) against Tally on a
+  laptop on the same Wi-Fi, filmed on Nov 8: it announced a held invoice; "How many invoices are held?" was heard word
+  for word and answered in 7 s (1.8 s to listen, 1.5 s to sort, 3.5 s to speak) for $0.0017; "invoice 1 on hold" put
+  it on hold in 8 s. One question of five was misheard ("approve invoice 3" as "pro in voice three") and answered as a
+  question about invoice 3. Against the host, from the same desk: the host's desk worker answered a spoken question
+  in 8.3 s, end to end, but the board downloads slowly (see Limits).
 
 ## The desk device: what it can and cannot do
 
@@ -131,7 +135,11 @@ This README grows with the project. The status of each part is stated as it land
 | Repeat words printed on an invoice | no: vendors are named by their names on file, or as "a vendor not on file" |
 
 Limits: push to talk only; anyone at the desk can ask and hold; an answer takes several seconds, about half of it
-the voice being made; the device has been measured against a laptop, not yet against the host.
+the voice being made. The board's network stack is compiled with a 5,760-byte TCP window, so from a desk in India
+to the host in New Jersey (277 ms) it reads at most about 20 KB/s: a 13-second announcement (614 KB) took 36 s to
+arrive, against 3.3 s for a laptop on the same Wi-Fi. Sending it 8 kHz mu-law and playing as it arrived broke up
+into noise when the download fell behind, so the device is served plain 24 kHz speech. It works well with Tally on
+the same network; a host in a Vultr region near the desk is the next step.
 
 ## The lab: how Tally is attacked
 
