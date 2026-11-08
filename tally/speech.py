@@ -72,9 +72,75 @@ def wav_info(data: bytes) -> tuple[int, int, int, float]:
     return rate, channels, 8 * width, frames / rate
 
 
-TARGET_RMS_DBFS = -12.0   # speech this loud is clear on the desk device's small speaker
+TARGET_RMS_DBFS = -10.0   # speech this loud is clear on the desk device's small speaker
+HIGHPASS_HZ = 400.0       # below this the board's 0.25 W speaker plays nothing; removing it leaves room for the voice
 MAX_GAIN_DB = 18.0
 KNEE = 0.5                # above this share of full scale, peaks are rounded off rather than clipped
+
+
+def highpass(frames: bytes, rate: int, cutoff: float = HIGHPASS_HZ) -> bytes:
+    """16-bit mono audio without what lies below `cutoff` (a first-order filter). The board's small speaker cannot
+    play it, and on a voice it holds much of the energy, so taking it out lets the rest be made louder."""
+    x = array.array("h", frames)
+    if not x:
+        return frames
+    rc = 1 / (2 * math.pi * cutoff)
+    a = rc / (rc + 1 / rate)
+    out = array.array("h", bytes(len(frames)))
+    y, prev = 0.0, x[0]
+    for i, v in enumerate(x):
+        y = a * (y + v - prev)
+        prev = v
+        out[i] = max(-32768, min(32767, int(round(y))))
+    return out.tobytes()
+
+
+PRESENCE_HZ, PRESENCE_DB = 2000.0, 6.0   # consonants (s, t, k) live here; small speakers lose them
+COMPRESS_RATIO, COMPRESS_FROM = 5.0, 0.35   # 5:1 above 0.35 of the voice's average level
+MAKEUP_MAX_DB = 30.0
+
+
+def _onepole_highpass(x: list[float], rate: int, cutoff: float) -> list[float]:
+    rc = 1 / (2 * math.pi * cutoff)
+    a = rc / (rc + 1 / rate)
+    out, y, prev = [], 0.0, x[0] if x else 0.0
+    for v in x:
+        y = a * (y + v - prev)
+        prev = v
+        out.append(y)
+    return out
+
+
+def for_speaker(frames: bytes, rate: int) -> bytes:
+    """16-bit mono speech shaped for the desk device's small speaker, as a phone or PA system shapes a voice: the low
+    end it cannot play taken out (HIGHPASS_HZ), consonants lifted (PRESENCE_DB above PRESENCE_HZ), quiet syllables
+    brought up towards loud ones (a COMPRESS_RATIO compressor on the voice's envelope, 3 ms attack, 60 ms release),
+    then levelled to TARGET_RMS_DBFS with a soft limiter, so nothing clips."""
+    x = [float(v) for v in array.array("h", frames)]
+    if not x:
+        return frames
+    x = _onepole_highpass(x, rate, HIGHPASS_HZ)
+    lift = 10 ** (PRESENCE_DB / 20) - 1
+    x = [v + lift * h for v, h in zip(x, _onepole_highpass(x, rate, PRESENCE_HZ))]
+    rms = math.sqrt(sum(v * v for v in x) / len(x)) or 1.0
+    attack, release = math.exp(-1 / (0.003 * rate)), math.exp(-1 / (0.06 * rate))
+    env, squeezed = 0.0, []
+    for v in x:
+        level = abs(v)
+        k = attack if level > env else release
+        env = k * env + (1 - k) * level
+        gain = (env / (COMPRESS_FROM * rms)) ** (1 / COMPRESS_RATIO - 1) if env > COMPRESS_FROM * rms else 1.0
+        squeezed.append(v * gain)
+    rms = math.sqrt(sum(v * v for v in squeezed) / len(squeezed)) / 32768 or 1e-9
+    gain = min(10 ** ((TARGET_RMS_DBFS - 20 * math.log10(rms)) / 20), 10 ** (MAKEUP_MAX_DB / 20))
+    out = array.array("h")
+    for v in squeezed:
+        y = v * gain / 32768
+        m = abs(y)
+        if m > KNEE:
+            m = KNEE + (1 - KNEE) * math.tanh((m - KNEE) / (1 - KNEE))
+        out.append(int(round(math.copysign(min(m, 1.0), y) * 32767)))
+    return out.tobytes()
 
 
 def louder(frames: bytes) -> bytes:
@@ -103,7 +169,7 @@ def louder(frames: bytes) -> bytes:
 # The device downloads every answer over TLS. Its TCP window is about 5.7 KB, so from a desk in India to the host in
 # New Jersey it reads about 17 KB a second: a 13-second announcement at 24 kHz (614 KB) took 36 s to arrive. At 12 kHz
 # it is half the size, and speech stays clear on a small speaker.
-DEVICE_RATE = 12000
+DEVICE_RATE = 24000   # 12 kHz cut off the s and sh sounds; on a local network the size does not matter
 
 
 def resample(frames: bytes, rate: int, to: int = DEVICE_RATE) -> bytes:
@@ -176,7 +242,7 @@ def _plain_wav(data: bytes, for_device: bool = False) -> tuple[bytes, float]:
     with wave.open(io.BytesIO(data)) as w:
         frames = w.readframes(w.getnframes())
     if for_device:
-        frames = resample(louder(frames), rate)
+        frames = resample(for_speaker(frames, rate), rate)
         rate = min(rate, DEVICE_RATE)
     out = io.BytesIO()
     with wave.open(out, "wb") as w:

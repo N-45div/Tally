@@ -43,12 +43,12 @@ def test_speech_for_the_device_is_resampled_to_half_the_size():
     from tally.speech import DEVICE_RATE, resample
     rate = 24000
     tone = array.array("h", (int(12000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(rate)))
-    half = array.array("h", resample(tone.tobytes(), rate))
-    assert abs(len(half) - DEVICE_RATE) <= 1                              # one second at the device's rate
+    half = array.array("h", resample(tone.tobytes(), rate, 12000))
+    assert abs(len(half) - 12000) <= 1                                   # one second at the lower rate
     assert abs(_dbfs(half) - _dbfs(tone)) < 1.0                           # a 440 Hz voice keeps its level
     hiss = array.array("h", (12000 if i % 2 else -12000 for i in range(rate)))   # 12 kHz: above the new limit
-    assert _dbfs(array.array("h", resample(hiss.tobytes(), rate))) < _dbfs(hiss) - 20
-    assert resample(tone.tobytes(), DEVICE_RATE) == tone.tobytes()
+    assert _dbfs(array.array("h", resample(hiss.tobytes(), rate, 12000))) < _dbfs(hiss) - 20
+    assert resample(tone.tobytes(), rate, rate) == tone.tobytes()
 
 
 def test_the_device_gets_8_khz_mu_law_that_decodes_back_to_the_speech():
@@ -69,3 +69,26 @@ def test_the_device_gets_8_khz_mu_law_that_decodes_back_to_the_speech():
     assert max(abs(x) for x in decoded) > 8000                       # loud enough to hear, not squashed
     assert all(ulaw_decode(b) == -ulaw_decode(b ^ 0x80) or b in (0x7F, 0xFF) for b in range(256))
     assert abs(ulaw_decode(0xFF)) <= 8 and abs(ulaw_decode(0x80)) >= 32000   # silence and full scale
+
+
+def test_the_low_end_a_small_speaker_cannot_play_is_taken_out():
+    from tally.speech import highpass
+    rate = 24000
+    tone = lambda hz: array.array("h", (int(12000 * math.sin(2 * math.pi * hz * i / rate)) for i in range(rate)))
+    low, voice = tone(80), tone(2000)
+    assert _dbfs(array.array("h", highpass(low.tobytes(), rate))) < _dbfs(low) - 9       # 80 Hz: mostly gone
+    assert _dbfs(array.array("h", highpass(voice.tobytes(), rate))) > _dbfs(voice) - 1.0  # 2 kHz: kept
+
+
+def test_speech_is_shaped_for_the_small_speaker():
+    from tally.speech import TARGET_RMS_DBFS, for_speaker
+    rate = 24000
+    # loud and soft "syllables" of a 1 kHz voice over a 90 Hz hum
+    voice = array.array("h", (int((6000 if (i // 2400) % 2 else 1200) * math.sin(2 * math.pi * 1000 * i / rate)
+                                  + 600 * math.sin(2 * math.pi * 90 * i / rate)) for i in range(rate * 2)))
+    shaped = array.array("h", for_speaker(voice.tobytes(), rate))
+    assert abs(_dbfs(shaped) - TARGET_RMS_DBFS) < 2.5                # loud
+    level = lambda a, k: _dbfs(a[k * 2400 + 600:k * 2400 + 1800])
+    assert level(voice, 1) - level(voice, 0) > 10                   # 14 dB apart as made
+    assert level(shaped, 1) - level(shaped, 0) < 8                  # brought much closer
+    assert max(abs(x) for x in shaped) <= 32767
