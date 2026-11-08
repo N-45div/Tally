@@ -37,3 +37,15 @@ def test_loud_speech_is_left_alone_and_the_gain_is_capped():
     raised = array.array("h", louder(whisper.tobytes()))
     assert _dbfs(raised) - _dbfs(whisper) <= MAX_GAIN_DB + 0.1
     assert louder(b"") == b""
+
+
+def test_speech_for_the_device_is_resampled_to_half_the_size():
+    from tally.speech import DEVICE_RATE, resample
+    rate = 24000
+    tone = array.array("h", (int(12000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(rate)))
+    half = array.array("h", resample(tone.tobytes(), rate))
+    assert abs(len(half) - DEVICE_RATE) <= 1                              # one second at the device's rate
+    assert abs(_dbfs(half) - _dbfs(tone)) < 1.0                           # a 440 Hz voice keeps its level
+    hiss = array.array("h", (12000 if i % 2 else -12000 for i in range(rate)))   # 12 kHz: above the new limit
+    assert _dbfs(array.array("h", resample(hiss.tobytes(), rate))) < _dbfs(hiss) - 20
+    assert resample(tone.tobytes(), DEVICE_RATE) == tone.tobytes()

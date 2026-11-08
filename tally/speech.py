@@ -7,7 +7,8 @@ Tally's code (tally.desk), never by a model, so a model here only turns sound in
 Models, all under licences that allow this use, tried in order:
 - speech to text: IBM Granite Speech 5.0 2B (Apache-2.0), then Whisper Large V3 Turbo (MIT), then Qwen3-ASR 1.7B
   (Apache-2.0). Granite writes numbers as digits, which matters for "invoice 12".
-- text to speech: Qwen3-TTS 12Hz 1.7B (Apache-2.0), then Chatterbox (MIT). Both return 24 kHz mono WAV.
+- text to speech: Qwen3-TTS 12Hz 1.7B (Apache-2.0), then Chatterbox (MIT). Both return 24 kHz mono WAV, which is
+  levelled and sent to the device at 12 kHz (see DEVICE_RATE).
 """
 from __future__ import annotations
 
@@ -99,16 +100,49 @@ def louder(frames: bytes) -> bytes:
     return out.tobytes()
 
 
-def _plain_wav(data: bytes, loud: bool = False) -> tuple[bytes, float]:
-    """The same sound as 16-bit mono with a plain header (some encoders add chunks a small device would trip on),
-    and with loud=True, brought to a level the device's speaker can be heard at."""
+# The device downloads every answer over TLS. Its TCP window is about 5.7 KB, so from a desk in India to the host in
+# New Jersey it reads about 17 KB a second: a 13-second announcement at 24 kHz (614 KB) took 36 s to arrive. At 12 kHz
+# it is half the size, and speech stays clear on a small speaker.
+DEVICE_RATE = 12000
+
+
+def resample(frames: bytes, rate: int, to: int = DEVICE_RATE) -> bytes:
+    """16-bit mono audio at `rate` as `to`, smoothed first so nothing above the new limit folds back in."""
+    if rate <= to:
+        return frames
+    x = array.array("h", frames)
+    if not x:
+        return frames
+    width = max(1, round(rate / to))           # a moving average about one output sample wide
+    smooth, total = [], 0
+    for i, v in enumerate(x):
+        total += v
+        if i >= width:
+            total -= x[i - width]
+        smooth.append(total / min(i + 1, width))
+    shift = (width - 1) / 2                    # the average lags by half its width
+    out = array.array("h")
+    step = rate / to
+    for n in range(int(len(x) / step)):
+        pos = min(n * step + shift, len(x) - 1)
+        i = int(pos)
+        frac = pos - i
+        nxt = smooth[min(i + 1, len(x) - 1)]
+        out.append(int(round(smooth[i] + (nxt - smooth[i]) * frac)))
+    return out.tobytes()
+
+
+def _plain_wav(data: bytes, for_device: bool = False) -> tuple[bytes, float]:
+    """The same sound as 16-bit mono with a plain header (some encoders add chunks a small device would trip on).
+    With for_device=True it is also brought to a level the device's speaker can be heard at, at DEVICE_RATE."""
     rate, channels, bits, seconds = wav_info(data)
     if bits != 16 or channels != 1:
         raise ValueError(f"expected 16-bit mono speech, got {bits}-bit, {channels} channel(s)")
     with wave.open(io.BytesIO(data)) as w:
         frames = w.readframes(w.getnframes())
-    if loud:
-        frames = louder(frames)
+    if for_device:
+        frames = resample(louder(frames), rate)
+        rate = min(rate, DEVICE_RATE)
     out = io.BytesIO()
     with wave.open(out, "wb") as w:
         w.setnchannels(1)
@@ -183,7 +217,7 @@ def speak(text: str, models: list[tuple[str, str]] | None = None, *, timeout: fl
         model, voice = model_voice
         data = _post("/audio/speech", json.dumps({"model": model, "voice": voice, "input": text, "response_format": "wav"}).encode(),
                      "application/json", timeout)
-        return _plain_wav(data, loud=True), voice
+        return _plain_wav(data, for_device=True), voice
 
     ((wav, audio_seconds), voice), model, seconds, attempts = _tries(models or SPEAK_MODELS, 2, call)
     return Spoken(wav, model, voice, seconds, audio_seconds, attempts)

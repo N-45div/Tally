@@ -225,7 +225,7 @@ def test_an_announcement_is_spoken_and_heard_back(app):
     text = desk.announcement(s, s.invoice(held))
     spoken = speech.speak(text)
     rate, channels, bits, seconds = speech.wav_info(spoken.wav)
-    assert (rate, channels, bits) == (24000, 1, 16) and 3 < seconds < 30 and spoken.wav[36:40] == b"data"
+    assert (rate, channels, bits) == (speech.DEVICE_RATE, 1, 16) and 3 < seconds < 30 and spoken.wav[36:40] == b"data"
     heard = speech.transcribe(spoken.wav)
     words = heard.text.lower()
     assert "northwind" in words and "on file" in words and "bank account" in words, heard.text
