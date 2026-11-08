@@ -17,7 +17,7 @@ static const uint32_t MAX_TALK_MS = 12000;
 static const size_t TALK_MAX_SAMPLES = MIC_RATE * MAX_TALK_MS / 1000;
 static const float MIC_PEAK = 26000.0f;     // where the loudest moment of a recording ends up (of 32767)
 static const float MAX_GAIN = 1.0f / 8.0f;  // 24-bit to 16-bit is 1/256: at most 32 times louder than that
-float volume = 1.0f;  // set with the console's volume command (the server already levels speech to -16 dBFS)
+float volume = 1.5f;  // 10% to 300%, set with the console's volume command; above 100%, peaks are clamped
 
 bool speakerReady = false, micReady = false;
 uint32_t speakerRate = 0;
@@ -79,7 +79,7 @@ bool playMono(const int16_t *samples, size_t count) {
   static int16_t stereo[512];
   for (size_t i = 0; i < count;) {
     size_t n = min(count - i, (size_t)256);
-    for (size_t j = 0; j < n; j++) stereo[2 * j] = stereo[2 * j + 1] = (int16_t)(samples[i + j] * volume);
+    for (size_t j = 0; j < n; j++) stereo[2 * j] = stereo[2 * j + 1] = (int16_t)constrain(lroundf(samples[i + j] * volume), -32767L, 32767L);
     size_t written = 0;
     i2s_write(I2S_NUM_0, stereo, n * 4, &written, 300 / portTICK_PERIOD_MS);
     if (written < n * 4) {
