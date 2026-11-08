@@ -67,7 +67,12 @@ void logLine(const char *fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(buf, sizeof buf, fmt, ap);
   va_end(ap);
-  Serial.printf("[%8lu] %s\n", (unsigned long)millis(), buf);
+  char line[320];
+  int n = snprintf(line, sizeof line, "[%8lu] %s\n", (unsigned long)millis(), buf);
+  n = min(n, (int)sizeof line - 1);
+  // Only what fits: with no computer reading the USB console its buffer fills, and a write that waits for room
+  // waits for ever on this core. The board froze there after an announcement's long log lines.
+  if (n > 0 && Serial.availableForWrite() >= n) Serial.write((const uint8_t *)line, n);
 }
 
 bool configured() { return settings.server.length() && settings.token.length(); }
@@ -600,6 +605,7 @@ void readSerial() {
 }
 
 void setup() {
+  Serial.setTxBufferSize(4096);  // room for a few minutes of logs while no computer is reading
   Serial.begin(115200);
   Serial.setTxTimeoutMs(0);  // never wait for a USB host that is not reading
   pinMode(PIN_BUTTON, INPUT_PULLUP);
