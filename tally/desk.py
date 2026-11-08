@@ -48,6 +48,7 @@ MENU_SYSTEM = (
 )
 # The model's choice of "hold" counts only if the person said a word for it: a misheard question stays a question.
 HOLD_WORDS = re.compile(r"\b(hold|stop|block|pause|freeze)\b", re.I)
+COUNT_WORDS = re.compile(r"\bhow many\b", re.I)  # a question asking how many is a count
 SHOWN = 3   # how many invoices one answer reads out
 KEEP_SECONDS = {"answer": 24 * 3600, "news": 7 * 24 * 3600}
 CAN_DO = ("I can tell you what is held and why, what is ready to approve, or about one invoice, and I can put an "
@@ -180,19 +181,29 @@ def announcement(store: Store, inv: dict) -> str:
 
 # Understanding the question: the model sees the person's words and nothing else.
 
+def fixed_rules(heard: str, intent: dict) -> dict:
+    """The rules that follow the model's choice. A "hold" without a word for holding is a question. A question that
+    names an invoice number is about that invoice. A question asking how many is a count: the model sometimes files
+    "how many invoices are held?" under "held" (a list) or "how many are waiting?" under "ready"."""
+    intent = dict(intent)
+    if intent["intent"] == "hold" and not HOLD_WORDS.search(heard):
+        intent["intent"] = "invoice"
+    if intent["intent"] in ("summary", "held", "ready") and intent["invoice"] is not None:
+        intent["intent"] = "invoice"  # "why is invoice 12 held?" is about invoice 12
+    if intent["intent"] in ("held", "ready") and intent["invoice"] is None and COUNT_WORDS.search(heard):
+        intent["intent"] = "summary"
+    return intent
+
+
 def understand(heard: str) -> tuple[dict, dict]:
-    """The menu item a question is, and what the call took. Two fixed rules follow the model's choice: a "hold"
-    without a word for holding is a question, and a question that names an invoice number is about that invoice."""
+    """The menu item a question is, and what the call took. The model sees only the person's words; fixed_rules
+    follow its choice."""
     a = chat_json([{"role": "system", "content": MENU_SYSTEM}, {"role": "user", "content": heard[:500]}], MENU_SCHEMA, MENU_MODELS,
                   name="menu", max_tokens=200)
     intent = {"intent": a.data.get("intent") if a.data.get("intent") in MENU else "other",
               "invoice": a.data.get("invoice") if isinstance(a.data.get("invoice"), int) else None,
               "vendor": str(a.data.get("vendor") or "")[:80]}
-    if intent["intent"] == "hold" and not HOLD_WORDS.search(heard):
-        intent["intent"] = "invoice"
-    if intent["intent"] in ("summary", "held", "ready") and intent["invoice"] is not None:
-        intent["intent"] = "invoice"  # "why is invoice 12 held?" is about invoice 12
-    return intent, {"model": a.model, "seconds": round(a.seconds, 2), "usd": round(a.usd, 6)}
+    return fixed_rules(heard, intent), {"model": a.model, "seconds": round(a.seconds, 2), "usd": round(a.usd, 6)}
 
 
 def _find(store: Store, intent: dict) -> list[dict]:

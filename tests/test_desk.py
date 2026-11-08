@@ -283,3 +283,13 @@ def test_a_device_can_hold_an_invoice_by_voice_and_never_approve_one(app):
     assert answer["answer"].startswith(f"Invoice {ready} from Northwind Office Supply is on hold now"), answer
     assert s.invoice(ready)["status"] == "held"
     assert "approved" not in [e["kind"] for e in ledger.entries(s.db)]
+
+
+def test_fixed_rules_follow_the_menu_model():
+    q = lambda intent, invoice=None: {"intent": intent, "invoice": invoice, "vendor": ""}
+    assert desk.fixed_rules("How many invoices are held right now?", q("held"))["intent"] == "summary"
+    assert desk.fixed_rules("How many invoices are waiting?", q("ready"))["intent"] == "summary"
+    assert desk.fixed_rules("What's on hold?", q("held"))["intent"] == "held"
+    assert desk.fixed_rules("Why is invoice 12 held?", q("held", 12))["intent"] == "invoice"
+    assert desk.fixed_rules("Tell me about invoice 12", q("hold", 12))["intent"] == "invoice"   # no word for holding
+    assert desk.fixed_rules("Put invoice 12 on hold", q("hold", 12))["intent"] == "hold"
