@@ -48,7 +48,10 @@ def _release() -> tuple[str, bytes]:
     if subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT, capture_output=True, text=True).stdout.strip():
         print("note: uncommitted changes are not part of the release", file=sys.stderr)
     revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
-    tarball = subprocess.run(["git", "archive", "--format=tar.gz", "HEAD"], cwd=ROOT, capture_output=True, check=True).stdout
+    # Files exactly as committed. Git for Windows sets core.autocrlf, and git archive honours it, so without this a
+    # release sent from Windows carries CRLF line endings, and bash stops at the first line of release.sh.
+    tarball = subprocess.run(["git", "-c", "core.autocrlf=false", "archive", "--format=tar.gz", "HEAD"], cwd=ROOT,
+                             capture_output=True, check=True).stdout
     return revision, tarball
 
 

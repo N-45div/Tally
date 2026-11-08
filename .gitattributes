@@ -1,0 +1,2 @@
+# Shell scripts run with bash on the host: always LF, whatever the checkout's platform.
+*.sh text eol=lf
