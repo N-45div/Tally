@@ -49,3 +49,23 @@ def test_speech_for_the_device_is_resampled_to_half_the_size():
     hiss = array.array("h", (12000 if i % 2 else -12000 for i in range(rate)))   # 12 kHz: above the new limit
     assert _dbfs(array.array("h", resample(hiss.tobytes(), rate))) < _dbfs(hiss) - 20
     assert resample(tone.tobytes(), DEVICE_RATE) == tone.tobytes()
+
+
+def test_the_device_gets_8_khz_mu_law_that_decodes_back_to_the_speech():
+    import io
+    import wave
+    from tally.speech import DEVICE_ULAW_RATE, for_device, ulaw_decode
+    rate = 12000
+    voice = array.array("h", (int(9000 * math.sin(2 * math.pi * 300 * i / rate) + 3000 * math.sin(2 * math.pi * 900 * i / rate))
+                              for i in range(rate * 2)))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1), w.setsampwidth(2), w.setframerate(rate), w.writeframes(voice.tobytes())
+    out = for_device(buf.getvalue())
+    assert out[:4] == b"RIFF" and out[8:16] == b"WAVEfmt " and out[36:40] == b"data" and len(out) == 44 + 2 * DEVICE_ULAW_RATE
+    assert int.from_bytes(out[20:22], "little") == 7 and int.from_bytes(out[24:28], "little") == DEVICE_ULAW_RATE
+    assert int.from_bytes(out[34:36], "little") == 8
+    decoded = [ulaw_decode(b) for b in out[44:]]
+    assert max(abs(x) for x in decoded) > 8000                       # loud enough to hear, not squashed
+    assert all(ulaw_decode(b) == -ulaw_decode(b ^ 0x80) or b in (0x7F, 0xFF) for b in range(256))
+    assert abs(ulaw_decode(0xFF)) <= 8 and abs(ulaw_decode(0x80)) >= 32000   # silence and full scale

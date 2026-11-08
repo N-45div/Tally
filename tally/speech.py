@@ -132,6 +132,41 @@ def resample(frames: bytes, rate: int, to: int = DEVICE_RATE) -> bytes:
     return out.tobytes()
 
 
+# What the device downloads: 8 kHz G.711 mu-law, 8 KB per second of speech, a sixth of 24 kHz 16-bit. The device's
+# TCP window is 5,760 bytes (compiled into its Arduino core), so from India to New Jersey (277 ms) it reads at most
+# about 20 KB/s, and often much less; it plays this while it downloads.
+DEVICE_ULAW_RATE = 8000
+_ULAW = bytes(
+    (lambda s: ~((0x80 if s < 0 else 0) | (e << 4) | ((m >> (e + 3)) & 0x0F)) & 0xFF)(s)
+    for s in range(-32768, 32768)
+    for m in [min(abs(s), 32635) + 0x84]
+    for e in [max([k for k in range(8) if m & (0x80 << k)] or [0])]
+)
+
+
+def ulaw_decode(u: int) -> int:
+    """One G.711 mu-law byte as a 16-bit sample (as the device decodes it)."""
+    u = ~u & 0xFF
+    magnitude = ((((u & 0x0F) << 3) + 0x84) << ((u >> 4) & 7)) - 0x84
+    return -magnitude if u & 0x80 else magnitude
+
+
+def for_device(wav: bytes) -> bytes:
+    """16-bit mono speech (as speak returns it) as the WAV the device downloads: 8 kHz, 8-bit mu-law, a plain
+    44-byte header."""
+    rate, channels, bits, _ = wav_info(wav)
+    if bits != 16 or channels != 1:
+        raise ValueError(f"expected 16-bit mono speech, got {bits}-bit, {channels} channel(s)")
+    with wave.open(io.BytesIO(wav)) as w:
+        frames = resample(w.readframes(w.getnframes()), rate, DEVICE_ULAW_RATE)
+    data = bytes(_ULAW[x + 32768] for x in array.array("h", frames))
+    header = (b"RIFF" + (36 + len(data)).to_bytes(4, "little") + b"WAVEfmt " + (16).to_bytes(4, "little")
+              + (7).to_bytes(2, "little") + (1).to_bytes(2, "little") + DEVICE_ULAW_RATE.to_bytes(4, "little")
+              + DEVICE_ULAW_RATE.to_bytes(4, "little") + (1).to_bytes(2, "little") + (8).to_bytes(2, "little")
+              + b"data" + len(data).to_bytes(4, "little"))
+    return header + data
+
+
 def _plain_wav(data: bytes, for_device: bool = False) -> tuple[bytes, float]:
     """The same sound as 16-bit mono with a plain header (some encoders add chunks a small device would trip on).
     With for_device=True it is also brought to a level the device's speaker can be heard at, at DEVICE_RATE."""
