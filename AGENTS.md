@@ -303,25 +303,39 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
   python.exe on that network type, and a block beats any allow. The board then gets "connection refused" from a
   laptop server. Fix, in an admin PowerShell: `Get-NetFirewallRule -Direction Inbound | Where-Object { $_.DisplayName
   -eq 'python.exe' -and $_.Action -eq 'Block' } | Set-NetFirewallRule -Action Allow -RemoteAddress LocalSubnet`.
+- The desk board froze whenever no computer was reading its USB console: this Arduino core's USB console waits for
+  ever for room once its buffer is full, and an announcement's long log lines filled it. Opening the console
+  "fixed" it, which hid the cause for hours. `logLine` now writes only what fits (firmware 0.1.5).
+- The board's Arduino core is compiled with a 5,760-byte TCP window (`CONFIG_LWIP_TCP_WND_DEFAULT`), so over a long
+  round trip (India to New Jersey, 277 ms) it reads at most about 20 KB/s, often less. A 614 KB announcement took
+  36 s. 8 kHz mu-law streamed while playing (`speech.for_device`, `streamWav`) broke up into noise when the download
+  fell behind; the device is served plain 24 kHz speech, and is best with Tally on its network or a nearby region.
+- After the Wi-Fi dropped once, firmware 0.1.0 crash-looped in the Wi-Fi driver (`scan_build_chan_list`) on every
+  join: a reconnect started while the library was already reconnecting, then a corrupted saved network. The board now
+  joins only the network in Tally's own settings (`provision.py --wifi`), and only the firmware reconnects.
+- The board's speaker is 16 ohm, 0.25 W. Turning the volume past 100% clipped and overdrove it ("not clear"); the
+  voice is shaped for it on the server instead (`speech.for_speaker`): 400 Hz high-pass, +6 dB above 2 kHz, a 5:1
+  compressor, -10 dBFS.
+- Live tests that ask the menu model are not perfectly repeatable; a release failed twice on "how many" questions
+  until a fixed rule made "how many" a count (`desk.fixed_rules`).
 - On the first laptop, port 8080 belonged to another service; the laptop tool uses 8765.
 
-## Where things stand (Nov 8)
+## Where things stand (Nov 9)
 
-- **Code**: everything for the desk device is committed. The suite passes locally (see Tests).
-- **Host** (`TALLY_HOST` in the private settings): running again since Nov 8, 15:25 UTC, on release 2f9904b, which
-  passed its whole suite there (175 passed; the one skip is `test_release.py`, which needs a git checkout). The desk
-  worker runs beside the web app and the invoice worker. A spoken question sent to it with the device's token was
-  heard word for word and answered in 8.3 s, end to end from a laptop in India. The person who can sign in is
-  `ndivij` (added from the console; the first user's password from Nov 4 was not kept).
-- **Board**: firmware `tally-desk/0.1.0`, set to the host (`https://$TALLY_HOST`) with the token of the device
-  "Frontdesk", kept in the private settings as `TALLY_DEVICE_TOKEN`. It connects over HTTPS and shows the real
-  workspace's counts.
+- **Code**: committed and on GitHub; the suite passes locally (see Tests).
+- **Host** (`TALLY_HOST`): running the latest release, whole suite passing there, the desk worker beside the web app.
+  The person who can sign in is `ndivij`; the device "Frontdesk" is registered there.
+- **Board**: firmware `tally-desk/0.1.5`, volume 100%, currently set to Tally on the laptop
+  (`http://192.168.1.4:8765`, the `lab/desk_local.py` workspace in `C:/Users/ndivij/tally-desk-local`) because of the
+  download limit above. To point it at the host: `provision.py --server https://$TALLY_HOST` with
+  `TALLY_DEVICE_TOKEN` from the private settings.
+- **Video and submission material** live outside the repository: `D:/tally-video` (a HyperFrames project; `build2.py`
+  builds it, `narrate.py` makes the narration with ElevenLabs) and `C:/Users/ndivij/tally-submission`.
 
 ### What is next
 
-1. Measure the board on the host: upload an invoice that should be held, ask questions, try "approve invoice N"
-   (refused) and "put invoice N on hold". Take the timings and costs from the ledger's "desk question" entries and
-   replace "not yet measured against the host" in the README.
+1. A host in a Vultr region near the desk, so the board can use it directly (see the TCP window above), or audio
+   the board can stream at its link speed without breaking up.
 2. Faster answers: the voice is about half of the wait; the speech models can stream.
 3. Updating the device's firmware over the network instead of USB.
 
