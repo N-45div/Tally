@@ -7,6 +7,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <WiFiClient.h>
 #include <driver/i2s.h>
 
 #include "board.h"
@@ -120,29 +121,118 @@ void listenBeep() { tone(880, 60); }                  // listening
 void gotItBeep() { tone(660, 60); }                   // recording sent
 void errorBeep() { tone(220, 250); }
 
-// A WAV file from the server, already in memory. Returns the seconds played, or a negative number if unplayable.
-float playWav(const uint8_t *wav, size_t size) {
-  if (!speakerReady || size < 44 || memcmp(wav, "RIFF", 4) || memcmp(wav + 8, "WAVE", 4)) return -1;
+// WAV files from the server: 16-bit PCM, or 8-bit G.711 mu-law (format 7), mono, 8 to 48 kHz. The server sends
+// 8 kHz mu-law: a sixth the size of 24 kHz PCM, because the board downloads slowly over a long round trip.
+struct Wav {
+  uint16_t format = 0, channels = 0, bits = 0;
   uint32_t rate = 0;
-  uint16_t channels = 0, bits = 0;
+  size_t start = 0, end = 0;  // the samples, as offsets into the file
+};
+
+int16_t ulaw(uint8_t u) {
+  u = ~u;
+  int magnitude = ((((u & 0x0F) << 3) + 0x84) << ((u >> 4) & 7)) - 0x84;
+  return (u & 0x80) ? -magnitude : magnitude;
+}
+
+// The format and where the samples are, from the first `have` bytes of a file of `size` bytes.
+bool parseWav(const uint8_t *wav, size_t have, size_t size, Wav &w) {
+  if (have < 12 || memcmp(wav, "RIFF", 4) || memcmp(wav + 8, "WAVE", 4)) return false;
   size_t pos = 12;
-  while (pos + 8 <= size) {
+  while (pos + 8 <= have) {
     uint32_t len = wav[pos + 4] | (wav[pos + 5] << 8) | (wav[pos + 6] << 16) | ((uint32_t)wav[pos + 7] << 24);
-    if (!memcmp(wav + pos, "fmt ", 4) && len >= 16) {
-      channels = wav[pos + 10] | (wav[pos + 11] << 8);
-      rate = wav[pos + 12] | (wav[pos + 13] << 8) | (wav[pos + 14] << 16) | ((uint32_t)wav[pos + 15] << 24);
-      bits = wav[pos + 22] | (wav[pos + 23] << 8);
+    if (!memcmp(wav + pos, "fmt ", 4) && len >= 16 && pos + 24 <= have) {
+      w.format = wav[pos + 8] | (wav[pos + 9] << 8);
+      w.channels = wav[pos + 10] | (wav[pos + 11] << 8);
+      w.rate = wav[pos + 12] | (wav[pos + 13] << 8) | (wav[pos + 14] << 16) | ((uint32_t)wav[pos + 15] << 24);
+      w.bits = wav[pos + 22] | (wav[pos + 23] << 8);
     } else if (!memcmp(wav + pos, "data", 4)) {
-      if (channels != 1 || bits != 16 || rate < 8000 || rate > 48000) return -1;
-      size_t samples = min((size_t)len, size - pos - 8) / 2;
-      setSpeakerRate(rate);
-      playMono((const int16_t *)(wav + pos + 8), samples);
-      finishSound();
-      return samples / (float)rate;
+      bool pcm = w.format == 1 && w.bits == 16, mulaw = w.format == 7 && w.bits == 8;
+      if (w.channels != 1 || !(pcm || mulaw) || w.rate < 8000 || w.rate > 48000) return false;
+      w.start = pos + 8;
+      w.end = min(w.start + len, size);
+      return true;
     }
     pos += 8 + len + (len & 1);
   }
-  return -1;
+  return false;
+}
+
+// Up to 256 samples from `p`, decoded and played.
+void playSamples(const uint8_t *p, size_t count, const Wav &w) {
+  static int16_t buf[256];
+  for (size_t i = 0; i < count; i++) buf[i] = w.format == 7 ? ulaw(p[i]) : (int16_t)(p[2 * i] | (p[2 * i + 1] << 8));
+  playMono(buf, count);
+}
+
+// A WAV file already in memory. Returns the seconds played, or a negative number if unplayable.
+float playWav(const uint8_t *wav, size_t size) {
+  Wav w;
+  if (!speakerReady || !parseWav(wav, size, size, w)) return -1;
+  size_t bps = w.bits / 8, samples = (w.end - w.start) / bps;
+  setSpeakerRate(w.rate);
+  for (size_t done = 0; done < samples;) {
+    size_t n = min(samples - done, (size_t)256);
+    playSamples(wav + w.start + done * bps, n, w);
+    done += n;
+  }
+  finishSound();
+  return samples / (float)w.rate;
+}
+
+// A WAV file played while it downloads: it starts once a second of sound (or all of it) has arrived, then reads
+// what the network has between writes to the speaker. The whole file ends up in `buf` (`size` bytes) so it can be
+// said again. `*got` is how much arrived. Returns the seconds played, or a negative number if unplayable.
+float streamWav(WiFiClient *s, uint8_t *buf, size_t size, size_t *got, uint32_t idleMs) {
+  size_t have = 0;
+  uint32_t last = millis();
+  Wav w;
+  while (!parseWav(buf, have, size, w)) {  // the header first
+    if (have >= min(size, (size_t)512) || millis() - last > idleMs) {
+      *got = have;
+      return -1;
+    }
+    int avail = s->available();
+    if (avail > 0) {
+      int n = s->read(buf + have, min((size_t)avail, size - have));
+      if (n > 0) have += n, last = millis();
+    } else if (!s->connected()) {
+      *got = have;
+      return -1;
+    } else {
+      delay(2);
+    }
+  }
+  if (!speakerReady) {
+    *got = have;
+    return -1;
+  }
+  size_t bps = w.bits / 8, played = w.start, ready = min(w.end, w.start + (size_t)w.rate * bps);
+  bool started = false;
+  setSpeakerRate(w.rate);
+  while (played + bps <= w.end) {
+    int avail = have < size ? s->available() : 0;
+    if (avail > 0) {
+      int n = s->read(buf + have, min((size_t)avail, size - have));
+      if (n > 0) have += n, last = millis();
+    }
+    if (!started && have >= ready) started = true;
+    size_t buffered = have > played ? (min(have, w.end) - played) / bps : 0;
+    if (started && buffered > 0) {
+      size_t n = min(buffered, (size_t)256);
+      playSamples(buf + played, n, w);  // waits while the speaker's buffer is full
+      played += n * bps;
+    } else if (have < size && (avail < 0 || (avail == 0 && !s->connected()))) {
+      break;  // the download ended early: what arrived has been played
+    } else if (millis() - last > idleMs) {
+      break;
+    } else {
+      delay(2);
+    }
+  }
+  finishSound();
+  *got = have;
+  return (played - w.start) / bps / (float)w.rate;
 }
 
 // Recording.

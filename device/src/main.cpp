@@ -253,8 +253,10 @@ bool fetchAndPlay(const String &path) {
   HTTPClient http;
   prepare(http, secure, plain, path, 20000);
   uint32_t started = millis();
+  logLine("audio %s: asking (heap %u, largest block %u)", path.c_str(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
   int code = http.GET();
   int size = http.getSize();
+  logLine("audio: HTTP %d, %d bytes, %u ms", code, size, (unsigned)(millis() - started));
   if (code != 200 || size <= 44 || (size_t)size > MAX_AUDIO) {
     logLine("audio %s: HTTP %d, %d bytes", path.c_str(), code, size);
     http.end();
@@ -265,16 +267,14 @@ bool fetchAndPlay(const String &path) {
     http.end();
     return false;
   }
-  size_t got = readFully(http.getStreamPtr(), wav, size, 8000);
+  size_t got = 0;
+  float seconds = streamWav(http.getStreamPtr(), wav, size, &got, 8000);  // plays while it downloads
   http.end();
-  if (got != (size_t)size) {
-    logLine("audio %s: got %u of %d bytes", path.c_str(), (unsigned)got, size);
+  logLine("said %.1f s (%u of %d bytes arrived in %u ms)", seconds, (unsigned)got, size, (unsigned)(millis() - started));
+  if (got != (size_t)size) {  // keep only a whole file for saying again
     free(wav);
-    return false;
+    return seconds > 0;
   }
-  uint32_t fetched = millis() - started;
-  float seconds = playWav(wav, size);
-  logLine("said %.1f s (downloaded %d bytes in %u ms)", seconds, size, (unsigned)fetched);
   if (lastAudio) free(lastAudio);
   lastAudio = wav;
   lastAudioSize = size;
@@ -435,16 +435,24 @@ void readButton() {
 
 // Wi-Fi.
 
+void onWifiEvent(arduino_event_id_t event, arduino_event_info_t info);
+
 // The network comes from Tally's own settings (set with provision.py --wifi), never from the Wi-Fi driver's own
 // saved configuration: once that was corrupted, every join crashed the driver (a LoadStoreError in
 // scan_build_chan_list) before the console could be reached. And only this code starts a connection: the library's
 // auto-reconnect is off, because a reconnect started while it was already reconnecting crashed the same way.
 void startWifi() {
   WiFi.persistent(false);  // the driver keeps nothing in flash
+  WiFi.onEvent(onWifiEvent);
   WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("tally-desk");
   WiFi.setSleep(false);
+}
+
+// Why the Wi-Fi dropped, if it does: logged from the Wi-Fi event task.
+void onWifiEvent(arduino_event_id_t event, arduino_event_info_t info) {
+  if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) logLine("Wi-Fi dropped, reason %d", info.wifi_sta_disconnected.reason);
 }
 
 void connectWifi() {
