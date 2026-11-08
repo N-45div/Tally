@@ -11,8 +11,10 @@ Models, all under licences that allow this use, tried in order:
 """
 from __future__ import annotations
 
+import array
 import io
 import json
+import math
 import time
 import urllib.error
 import urllib.request
@@ -69,13 +71,44 @@ def wav_info(data: bytes) -> tuple[int, int, int, float]:
     return rate, channels, 8 * width, frames / rate
 
 
-def _plain_wav(data: bytes) -> tuple[bytes, float]:
-    """The same sound as 16-bit mono with a plain header (some encoders add chunks a small device would trip on)."""
+TARGET_RMS_DBFS = -16.0   # speech this loud is clear on the desk device's small speaker
+MAX_GAIN_DB = 18.0
+KNEE = 0.7                # above this share of full scale, peaks are rounded off rather than clipped
+
+
+def louder(frames: bytes) -> bytes:
+    """16-bit mono speech brought to TARGET_RMS_DBFS (raising it by at most MAX_GAIN_DB, never lowering it), with a
+    soft limiter, so no sample clips. The voices came back with an average level near -23.5 dBFS; played on the
+    board, that was barely audible."""
+    samples = array.array("h", frames)
+    if not samples:
+        return frames
+    rms = math.sqrt(sum(x * x for x in samples) / len(samples)) / 32768
+    if rms <= 0:
+        return frames
+    gain = min(10 ** ((TARGET_RMS_DBFS - 20 * math.log10(rms)) / 20), 10 ** (MAX_GAIN_DB / 20))
+    if gain <= 1:
+        return frames
+    out = array.array("h", bytes(len(frames)))
+    for i, x in enumerate(samples):
+        y = x * gain / 32768
+        m = abs(y)
+        if m > KNEE:
+            m = KNEE + (1 - KNEE) * math.tanh((m - KNEE) / (1 - KNEE))
+        out[i] = int(round(math.copysign(m, y) * 32767))
+    return out.tobytes()
+
+
+def _plain_wav(data: bytes, loud: bool = False) -> tuple[bytes, float]:
+    """The same sound as 16-bit mono with a plain header (some encoders add chunks a small device would trip on),
+    and with loud=True, brought to a level the device's speaker can be heard at."""
     rate, channels, bits, seconds = wav_info(data)
     if bits != 16 or channels != 1:
         raise ValueError(f"expected 16-bit mono speech, got {bits}-bit, {channels} channel(s)")
     with wave.open(io.BytesIO(data)) as w:
         frames = w.readframes(w.getnframes())
+    if loud:
+        frames = louder(frames)
     out = io.BytesIO()
     with wave.open(out, "wb") as w:
         w.setnchannels(1)
@@ -150,7 +183,7 @@ def speak(text: str, models: list[tuple[str, str]] | None = None, *, timeout: fl
         model, voice = model_voice
         data = _post("/audio/speech", json.dumps({"model": model, "voice": voice, "input": text, "response_format": "wav"}).encode(),
                      "application/json", timeout)
-        return _plain_wav(data), voice
+        return _plain_wav(data, loud=True), voice
 
     ((wav, audio_seconds), voice), model, seconds, attempts = _tries(models or SPEAK_MODELS, 2, call)
     return Spoken(wav, model, voice, seconds, audio_seconds, attempts)
