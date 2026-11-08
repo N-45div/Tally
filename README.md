@@ -11,6 +11,51 @@ pages as images, which are what a person would see, and a report of anything hid
 reads the images, never the text layer. Fixed rules, not the model, decide whether an invoice is held, and nothing is
 paid until a person approves it.
 
+## How it runs on Vultr
+
+Everything runs on Vultr: one cloud instance for the app and the sandboxes, and Vultr Serverless Inference for every
+model call.
+
+```mermaid
+flowchart LR
+  P["Finance team's browser"] -->|HTTPS| C
+  D["Desk device<br/>ESP32-S3: mic, speaker, screen"] -->|"HTTPS, its own token"| C
+  subgraph VX1["Vultr VX1 instance: Ubuntu 24.04, KVM inside"]
+    C["Caddy, HTTPS"] --> W["Web app<br/>no model key, opens no file"]
+    W --> S[("SQLite records<br/>hash-chained ledger")]
+    K["Invoice worker"] --> S
+    K -->|"one per file"| M["Microsandbox microVM<br/>no network, no keys<br/>PDF in; page images and a report out"]
+    DW["Desk worker"] --> S
+  end
+  K -->|"page images only"| I["Vultr Serverless Inference"]
+  DW -->|"speech, and the person's words"| I
+```
+
+| Vultr service | What Tally uses it for |
+|---|---|
+| Cloud Compute, VX1 (`vx1-g-2c-8g-120s`: 2 vCPU, 8 GB, 120 GB, nested KVM) | The whole backend: Caddy with HTTPS, the web app (Flask under gunicorn), the invoice worker, the desk worker, the public demo and its worker, the deploy endpoint, and a Microsandbox microVM for every invoice, which needs the KVM the VX1 provides. $55.48 a month. |
+| Serverless Inference, chat and vision | Reading each invoice's page images into fixed fields, twice, by two model families: GLM (`glm-5.3-flash`) reads and Qwen (`qwen3.8-flash-next`) checks, each held to a strict JSON schema. The same models sort a question spoken to the desk device into a fixed menu. About $0.0055 an invoice. |
+| Serverless Inference, speech to text | What a person says to the desk device: IBM Granite Speech 5.0 2B, then Whisper Large V3 Turbo, then Qwen3-ASR 1.7B if one fails. |
+| Serverless Inference, text to speech | What the desk device says: Qwen3-TTS 1.7B, then Chatterbox. About $0.0023 for a whole spoken question and answer. |
+
+One invoice, start to finish:
+
+1. A person uploads a PDF. The web app stores it and queues it; it never opens the file and never has the model key.
+2. The invoice worker starts a fresh microVM for it: no network, 1 CPU, 512 MB, a time limit. Inside, the airlock
+   (`tally/airlock/`) looks for hidden text and active content and draws each page as an image. Only the images and
+   a report come out, and both are checked before anything uses them. The microVM is then removed.
+3. The page images go to Serverless Inference twice, to two model families. The model only copies what it sees into
+   fields; it has no tools and decides nothing.
+4. Fixed code (`tally/rules.py`) decides: the vendor and bank details are the ones on file, the purchase order covers
+   it, the numbers add up, it is not a duplicate, and the two readings agree. Anything else holds it.
+5. A person approves a ready invoice. The checks run again at that moment, and payment is recorded to the bank details
+   on file, never to an account printed on the invoice. Every step goes in the hash-chained ledger.
+6. The desk device announces each new hold, with why, and answers spoken questions about the queue. It can hold an
+   invoice but never approve one.
+
+A new host is one command (`python deploy/host.py create`, see [Host](#host)): its first boot installs the current
+commit, and every later release is tested on the host before it replaces the running one.
+
 This README grows with the project. The status of each part is stated as it lands.
 
 ## Status
