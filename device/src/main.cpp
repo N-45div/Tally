@@ -79,6 +79,7 @@ void loadSettings() {
   settings.rotation = prefs.getInt("rotation", 0);
   settings.ssid = prefs.getString("wifi_ssid", "");
   settings.pass = prefs.getString("wifi_pass", "");
+  volume = prefs.getInt("volume", 100) / 100.0f;
   prefs.end();
 }
 
@@ -89,6 +90,7 @@ void saveSettings() {
   prefs.putInt("rotation", settings.rotation);
   prefs.putString("wifi_ssid", settings.ssid);
   prefs.putString("wifi_pass", settings.pass);
+  prefs.putInt("volume", (int)lroundf(volume * 100));
   prefs.end();
 }
 
@@ -550,6 +552,13 @@ void command(String line) {
   } else if (cmd == "beep") {
     chime();
     Serial.println("OK beep");
+  } else if (cmd == "volume") {  // 10 to 100 percent of full scale; kept across restarts
+    if (arg.length()) {
+      volume = constrain(arg.toInt(), 10, 100) / 100.0f;
+      saveSettings();
+      chime();
+    }
+    Serial.printf("OK volume %d\n", (int)lroundf(volume * 100));
   } else if (cmd == "mic") {
     micTest();
   } else if (cmd == "ask") {  // ask without the button: record for that many seconds, then send
@@ -564,7 +573,7 @@ void command(String line) {
     ESP.restart();
   } else if (cmd.length()) {
     Serial.println("ERR commands: status, server <url>, token <token>, wifi <name><TAB><password>, rotation <0-3>, "
-                   "beep, mic, ask <seconds>, news, reboot");
+                   "volume <10-100>, beep, mic, ask <seconds>, news, reboot");
   }
 }
 
