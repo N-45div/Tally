@@ -11,6 +11,10 @@ pages as images, which are what a person would see, and a report of anything hid
 reads the images, never the text layer. Fixed rules, not the model, decide whether an invoice is held, and nothing is
 paid until a person approves it.
 
+## Live Demo
+
+https://github.com/user-attachments/assets/b7c17a91-83e7-4b2d-8f57-ac090d3b0725
+
 ## How it runs on Vultr
 
 Everything runs on Vultr: one cloud instance for the app and the sandboxes, and Vultr Serverless Inference for every
