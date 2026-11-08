@@ -72,9 +72,9 @@ def wav_info(data: bytes) -> tuple[int, int, int, float]:
     return rate, channels, 8 * width, frames / rate
 
 
-TARGET_RMS_DBFS = -16.0   # speech this loud is clear on the desk device's small speaker
+TARGET_RMS_DBFS = -12.0   # speech this loud is clear on the desk device's small speaker
 MAX_GAIN_DB = 18.0
-KNEE = 0.7                # above this share of full scale, peaks are rounded off rather than clipped
+KNEE = 0.5                # above this share of full scale, peaks are rounded off rather than clipped
 
 
 def louder(frames: bytes) -> bytes:

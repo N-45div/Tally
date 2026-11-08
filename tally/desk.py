@@ -261,9 +261,10 @@ def _spoken(text: str) -> tuple[bytes | None, dict]:
         s = speech.speak(text)
     except (InferenceError, ValueError) as e:
         return None, {"why": str(e)[:300]}
-    # What the device downloads: 8 kHz mu-law, a sixth of the size, which it plays as it arrives.
-    return speech.for_device(s.wav), {"model": s.model, "voice": s.voice, "seconds": round(s.seconds, 2),
-                                      "audio_seconds": round(s.audio_seconds, 2), "usd": round(s.usd, 6)}
+    # Plain 16-bit speech at speech.DEVICE_RATE. (speech.for_device makes 8 kHz mu-law, a sixth of the size, but
+    # streamed to the board over a slow link it broke up into noise; see device/README.md.)
+    return s.wav, {"model": s.model, "voice": s.voice, "seconds": round(s.seconds, 2), "audio_seconds": round(s.audio_seconds, 2),
+                   "usd": round(s.usd, 6)}
 
 
 def answer_request(store: Store, req: dict) -> None:
