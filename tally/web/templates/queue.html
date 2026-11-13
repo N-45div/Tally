@@ -30,7 +30,7 @@
       <td><a href="{{ url_for('invoice', invoice_id=inv.id) }}">{{ inv.filename }}</a></td>
       <td>{{ (inv.decision or {}).get("facts", {}).get("vendor_name") or fields.get("vendor_name") or "" }}</td>
       <td class="num">{% if inv.total_cents is not none %}{{ inv.currency }} {{ inv.total_cents | money }}{% endif %}</td>
-      <td><span class="status {{ inv.status }}">{{ labels[inv.status] }}</span></td>
+      <td><span class="status {{ inv.status }}">{{ labels[inv.status] }}</span>{% if inv.status == "held" and risks.get(inv.id) %} <span class="risk {{ risks[inv.id] }}" title="From its case file">{{ risks[inv.id] }} risk</span>{% endif %}</td>
       <td class="why">{% if inv.decision and inv.decision.holds %}{{ inv.decision.holds[0].text }}{% if inv.decision.holds | length > 1 %} (+{{ inv.decision.holds | length - 1 }} more){% endif %}{% elif inv.status == "failed" %}{{ inv.note }}{% endif %}</td>
     </tr>
   {% endfor %}

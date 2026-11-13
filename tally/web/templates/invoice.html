@@ -69,6 +69,31 @@
 </ul>
 {% endif %}
 
+{% if case %}
+{% set cf = case.casefile %}{% set d = case.detail %}
+<section class="case">
+  <h2>Case file <span class="risk {{ cf.risk }}">{{ cf.risk }} risk</span></h2>
+  <p>{{ cf.summary }}</p>
+  {% if cf.findings %}
+  <ul class="findings">{% for f in cf.findings %}<li>{{ f.text }} <span class="quiet small">{% for e in f.evidence %}<code>{{ e }}</code>{% if not loop.last %} {% endif %}{% endfor %}</span></li>{% endfor %}</ul>
+  {% endif %}
+  <h3>Next steps</h3>
+  <ol>{% for st in cf.next_steps %}<li><strong>{{ st.says }}</strong> {{ st.why }}</li>{% endfor %}</ol>
+  {% if cf.call %}
+  <h3>The call</h3>
+  <p>Phone <strong>{{ cf.call.vendor }}</strong> on <strong>{{ cf.call.phone }}</strong>, the number on file.</p>
+  <ul>{% for q in cf.call.ask %}<li>{{ q }}</li>{% endfor %}</ul>
+  {% endif %}
+  <details><summary>The evidence it was written from</summary>
+    <p class="quiet small">Assembled by code from Tally's records. Nothing printed on the invoice was sent except amounts, dates, and the country and last four characters of an account.</p>
+    <pre class="evidence">{{ case.evidence | tojson(indent=1) }}</pre>
+  </details>
+  <p class="quiet small">Written by {{ d.model }} through SERV Reasoning (prompt guard and shadow agent on) at {{ case.at }}, in {{ d.seconds }} s, for ${{ "%.4f" | format(d.usd or 0) }}{% if d.serv_request_id %}; SERV request {{ d.serv_request_id }}{% endif %}.
+  Code kept only findings that cite this evidence and steps allowed for these holds{% if d.dropped and (d.dropped.findings or d.dropped.steps or d.dropped.risk) %}, and dropped {{ d.dropped.findings | length }} finding(s) and {{ d.dropped.steps | length }} step(s){% if d.dropped.risk %}; risk {{ d.dropped.risk }}{% endif %}{% endif %}.
+  It decides nothing: the checks hold this invoice, and a person acts on it.</p>
+</section>
+{% endif %}
+
 {% if inv.reading %}
 <h2>What was read</h2>
 <p class="quiet">Copied from the page images only, never from the file's text layer.</p>

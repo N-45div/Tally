@@ -119,6 +119,18 @@ CREATE TABLE IF NOT EXISTS desk_state (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS cases (
+    id         INTEGER PRIMARY KEY,
+    invoice_id INTEGER NOT NULL REFERENCES invoices(id),
+    basis      TEXT NOT NULL,
+    status     TEXT NOT NULL CHECK (status IN ('written', 'failed')),
+    at         TEXT NOT NULL,
+    evidence   TEXT NOT NULL,
+    proposal   TEXT,
+    casefile   TEXT,
+    detail     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cases_by_invoice ON cases (invoice_id, basis);
 """
 JSON_COLUMNS = ("airlock", "reading", "check_reading", "decision")
 DESK_ASKS_PER_HOUR = 60     # questions one device may send in an hour
@@ -577,6 +589,56 @@ class Store:
 
     def latest_news_id(self) -> int:
         return self.db.execute("SELECT COALESCE(MAX(id), 0) FROM desk_news WHERE spoken != 0").fetchone()[0]
+
+    # Case files for held invoices (tally.cases): written by a model from records only, checked by code, deciding nothing.
+
+    def vendor_history(self, vendor_id: int, invoice_id: int) -> dict:
+        """What the records say about a vendor, for a case file: invoices approved, bank changes, other holds."""
+        approved = [dict(r) for r in self.db.execute(
+            "SELECT id, total_cents, currency, decided_at FROM invoices WHERE vendor_id = ? AND status = 'approved' AND id != ? ORDER BY id",
+            (vendor_id, invoice_id))]
+        bank_changes = [{"at": r[0], "detail": json.loads(r[1])} for r in self.db.execute(
+            "SELECT at, detail FROM ledger WHERE kind = 'vendor bank details changed' AND json_extract(detail, '$.vendor_id') = ? ORDER BY seq",
+            (vendor_id,))]
+        held = [dict(r) for r in self.db.execute(
+            "SELECT id, status, decision, uploaded_at FROM invoices WHERE vendor_id = ? AND id != ? AND status IN ('held', 'rejected')",
+            (vendor_id, invoice_id))]
+        return {"approved": approved, "bank_changes": bank_changes, "held_or_rejected": held}
+
+    def cases_for(self, invoice_id: int) -> list[dict]:
+        out = []
+        for r in self.db.execute("SELECT * FROM cases WHERE invoice_id = ? ORDER BY id DESC", (invoice_id,)):
+            c = dict(r)
+            for k in ("evidence", "proposal", "casefile", "detail"):
+                c[k] = json.loads(c[k]) if c[k] else None
+            out.append(c)
+        return out
+
+    def latest_case(self, invoice_id: int) -> dict | None:
+        return next((c for c in self.cases_for(invoice_id) if c["status"] == "written"), None)
+
+    def case_risks(self) -> dict[int, str]:
+        """The risk in each invoice's latest case file, for the queue."""
+        return {r[0]: r[1] for r in self.db.execute(
+            "SELECT invoice_id, json_extract(casefile, '$.risk') FROM cases WHERE id IN"
+            " (SELECT MAX(id) FROM cases WHERE status = 'written' GROUP BY invoice_id)")}
+
+    def case_attempts(self, invoice_id: int, basis: str) -> list[dict]:
+        return [dict(r) for r in self.db.execute("SELECT id, status, at FROM cases WHERE invoice_id = ? AND basis = ? ORDER BY id",
+                                                 (invoice_id, basis))]
+
+    def save_case(self, actor: str, invoice_id: int, basis: str, *, evidence: dict, proposal: dict | None, casefile: dict | None,
+                  detail: dict) -> int:
+        """A case file (or a failed attempt at one) and its ledger entry, together. It changes nothing else: the
+        invoice stays held, and only a person releases, rejects or approves it."""
+        status = "written" if casefile is not None else "failed"
+        with self.tx() as db:
+            cid = db.execute("INSERT INTO cases (invoice_id, basis, status, at, evidence, proposal, casefile, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                             (invoice_id, basis, status, _now(), json.dumps(evidence), json.dumps(proposal) if proposal is not None else None,
+                              json.dumps(casefile) if casefile is not None else None, json.dumps(detail))).lastrowid
+            ledger.append(db, actor, "case file written" if casefile is not None else "case file failed",
+                          {"case_id": cid, "basis": basis} | detail, invoice_id)
+        return cid
 
 
 def desk_actor(device: dict) -> str:

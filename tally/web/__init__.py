@@ -221,7 +221,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
         counts = Counter(i["status"] for i in everything)
         status = request.args.get("status") if request.args.get("status") in counts else None
         shown = [i for i in everything if i["status"] == status] if status else everything
-        return render_template("queue.html", invoices=shown, counts=counts, status=status, total=len(everything))
+        return render_template("queue.html", invoices=shown, counts=counts, status=status, total=len(everything),
+                               risks=store().case_risks())
 
     def demo_upload_refused() -> str | None:
         """Why one more upload to the demo would be over its limits, or None."""
@@ -270,7 +271,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
         inv = _invoice_or_404(invoice_id)
         vendor = s.vendor(inv["vendor_id"]) if inv["vendor_id"] else None
         return render_template("invoice.html", inv=inv, vendor=vendor, entries=ledger.entries(s.db, invoice_id),
-                               desk_holds=[h for h in s.desk_holds(invoice_id) if not h["released_at"]])
+                               desk_holds=[h for h in s.desk_holds(invoice_id) if not h["released_at"]],
+                               case=s.latest_case(invoice_id) if inv["status"] == "held" else None)
 
     @app.get("/invoices/<int:invoice_id>/<name>")
     @login_required
