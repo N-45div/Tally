@@ -16,7 +16,7 @@ Commit the built files with the change that needs them: the host installs Tally 
 - `src/tally.css` is the entry. `src/tokens.css` holds every colour as a CSS variable, once for light and once for
   dark (`prefers-color-scheme`); the entry maps them to Tailwind colours, so a template can say `text-muted` or
   `bg-surface`. `src/base.css` styles bare elements, `src/components.css` the shared pieces (the shell, cards,
-  buttons, status pills, tables, callouts, forms).
+  buttons, status pills, tables, callouts, forms), and `src/pages.css` what belongs to one page.
 - Tailwind scans `tally/web/templates/` for the utility classes the templates use (`@source`), so a class added to a
   template appears in the stylesheet after the next build.
 - Icons are inline SVG from `templates/_icons.html`, drawn by the `.icon` rules: nothing is fetched for them.

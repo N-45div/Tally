@@ -53,6 +53,7 @@
     .topbar-inner > .nav-app {
       order: 3; flex-basis: 100%; overflow-x: auto; scrollbar-width: none;
       margin: 0 -16px; padding: 0 12px 8px;
+      mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
     }
     .topbar-inner > .nav-app::-webkit-scrollbar { display: none; }
   }
@@ -207,7 +208,8 @@
   table.data th:last-child, table.data td:last-child { padding-right: 20px; }
   table.data tbody tr { transition: background 0.1s; }
   table.data tbody tr:hover { background: var(--surface-2); }
-  table.data td a:not(.btn) { font-weight: 540; }
+  table.data td a:not(.btn) { font-weight: 540; text-decoration: none; }
+  table.data td a:not(.btn):hover { text-decoration: underline; }
   table.compact th, table.compact td { padding-block: 7px; font-size: 13.5px; }
   .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   td.num, .tabular { font-variant-numeric: tabular-nums; }
