@@ -7,9 +7,9 @@
   .icon-xl { width: 24px; height: 24px; }
 
   /* ---- The shell ---- */
-  .skip { position: absolute; left: 12px; top: -48px; z-index: 50; padding: 8px 12px; border-radius: 8px;
+  .skip { position: absolute; left: 12px; top: 12px; z-index: 50; padding: 8px 12px; border-radius: 8px;
           background: var(--surface); box-shadow: var(--shadow-md); }
-  .skip:focus { top: 12px; }
+  .skip:not(:focus) { top: -200px; box-shadow: none; }
 
   .topbar {
     position: sticky; top: 0; z-index: 30;
@@ -217,7 +217,7 @@
   a.id { text-decoration: none; }
   a.id:hover { color: var(--accent-ink); text-decoration: underline; }
   .hash { font-family: var(--font-mono); font-size: 12px; color: var(--faint); white-space: nowrap; }
-  .when { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .when { white-space: nowrap; color: var(--muted); }
   table .empty-row td { padding: 28px 20px; text-align: center; color: var(--muted); }
 
   /* ---- Callouts ---- */

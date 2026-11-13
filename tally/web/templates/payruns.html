@@ -1,44 +1,63 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
 {% set labels = {"queued": "Planning", "planned": "Plan ready", "failed": "Not planned", "approved": "Approved", "discarded": "Discarded"} %}
 {% block title %}Payment runs{% endblock %}
 {% block main %}
-<h1>Payment runs</h1>
-<p class="lede">Say how this run should choose, in your own words. SERV Reasoning proposes which approved invoices to pay
-  now and which to leave for later; code checks the plan against the records and the cash; you approve the exact plan.
-  Payment always goes to the bank details on file.</p>
-
-<form method="post" action="{{ url_for('payruns_add') }}" class="panel stack">
-  <input type="hidden" name="csrf" value="{{ csrf_token }}">
-  <label>How should this run choose?
-    <textarea name="policy" rows="3" maxlength="800" required placeholder="Keep 5,000 back for payroll. Rent and utilities are never late. Pay small suppliers before large ones."></textarea>
-  </label>
-  <div class="row">
-    <label>Cash available <input name="cash" inputmode="decimal" required placeholder="13,500.00"></label>
-    <label>Currency
-      <select name="currency">{% for cur in payable %}<option>{{ cur }}</option>{% else %}<option>GBP</option>{% endfor %}</select>
-    </label>
-    <label>Pay date <input type="date" name="pay_date" value="{{ today }}" required></label>
-    <button>Plan the run</button>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Payment runs</h1>
+    <p class="page-sub">Say how this run should choose, in your own words. SERV Reasoning proposes which approved invoices to pay
+      now and which to leave for later; code checks the plan against the records and the cash; you approve the exact plan.
+      Payment always goes to the bank details on file.</p>
   </div>
-  <p class="quiet small">Waiting to be paid:
-    {% for cur, n in payable.items() %}{{ n }} approved invoice(s), {{ cur }} {{ totals[cur] | money }}{% if not loop.last %}; {% endif %}{% else %}no approved invoices yet.{% endfor %}</p>
+</div>
+
+<form method="post" action="{{ url_for('payruns_add') }}" class="card runform">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <div class="card-body form-stack">
+    <label>How should this run choose?
+      <textarea name="policy" rows="3" maxlength="800" required placeholder="Keep 5,000 back for payroll. Rent and utilities are never late. Pay small suppliers before large ones."></textarea>
+    </label>
+    <div class="runform-row">
+      <label>Cash available <input name="cash" inputmode="decimal" required placeholder="13,500.00"></label>
+      <label>Currency
+        <select name="currency">{% for cur in payable %}<option>{{ cur }}</option>{% else %}<option>GBP</option>{% endfor %}</select>
+      </label>
+      <label>Pay date <input type="date" name="pay_date" value="{{ today }}" required></label>
+      <button class="btn btn-primary">Plan the run</button>
+    </div>
+  </div>
+  <div class="card-foot waiting">
+    {{ icon.coins() }}
+    <p>Waiting to be paid:
+      {% for cur, n in payable.items() %}{{ n }} approved invoice(s), {{ cur }} {{ totals[cur] | money }}{% if not loop.last %}; {% endif %}{% else %}no approved invoices yet.{% endfor %}</p>
+  </div>
 </form>
 
 {% if runs %}
-<table>
-  <thead><tr><th>#</th><th>Asked by</th><th>Pay date</th><th class="num">Cash</th><th class="num">Planned</th><th>Status</th></tr></thead>
-  <tbody>
-  {% for r in runs %}
-    <tr>
-      <td><a href="{{ url_for('payrun_page', payrun_id=r.id) }}">{{ r.id }}</a></td>
-      <td>{{ r.requested_by }} <span class="quiet small">{{ r.requested_at[:16] | replace("T", " ") }}</span></td>
-      <td>{{ r.pay_date }}</td>
-      <td class="num">{{ r.currency }} {{ r.cash_cents | money }}</td>
-      <td class="num">{% if r.plan %}{{ r.plan.pay | length }} · {{ r.currency }} {{ r.plan.total_cents | money }}{% endif %}</td>
-      <td><span class="status run-{{ r.status }}">{{ labels[r.status] }}</span></td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="card runs">
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>#</th><th>Asked by</th><th>Pay date</th><th class="num">Cash</th><th class="num">Planned</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for r in runs %}
+        <tr>
+          <td><a class="id" href="{{ url_for('payrun_page', payrun_id=r.id) }}">{{ r.id }}</a></td>
+          <td>{{ r.requested_by }} <span class="when small">{{ r.requested_at[:16] | replace("T", " ") }}</span></td>
+          <td class="nowrap">{{ r.pay_date }}</td>
+          <td class="num">{{ r.currency }} {{ r.cash_cents | money }}</td>
+          <td class="num">{% if r.plan %}<span class="quiet">{{ r.plan.pay | length }} ·</span> {{ r.currency }} {{ r.plan.total_cents | money }}{% endif %}</td>
+          <td><span class="status run-{{ r.status }}">{{ labels[r.status] }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card empty">
+  {{ icon.coins() }}
+  <p>No payment runs yet.</p>
+</div>
 {% endif %}
 {% endblock %}
