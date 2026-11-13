@@ -22,10 +22,10 @@
 </form>
 
 {% if total %}
-<nav class="filters" aria-label="Filter by status">
-  <a href="{{ url_for('queue') }}" class="filter f-all{{ ' on' if not status }}"{% if not status %} aria-current="true"{% endif %}>All <b>{{ total }}</b></a>
+<nav class="facets" aria-label="Filter by status">
+  <a href="{{ url_for('queue') }}" class="facet f-all{{ ' on' if not status }}"{% if not status %} aria-current="true"{% endif %}>All <b>{{ total }}</b></a>
   {% for st in ["held", "ready", "queued", "processing", "approved", "rejected", "failed"] if counts[st] %}
-  <a href="{{ url_for('queue', status=st) }}" class="filter f-{{ st }}{{ ' on' if status == st }}"{% if status == st %} aria-current="true"{% endif %}>{{ labels[st] }} <b>{{ counts[st] }}</b></a>
+  <a href="{{ url_for('queue', status=st) }}" class="facet f-{{ st }}{{ ' on' if status == st }}"{% if status == st %} aria-current="true"{% endif %}>{{ labels[st] }} <b>{{ counts[st] }}</b></a>
   {% endfor %}
 </nav>
 {% endif %}

@@ -258,7 +258,7 @@
   .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13.5rem), 1fr)); margin: 0 0 16px; }
   .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow-sm);
           display: flex; flex-direction: column; }
-  .tile .label { color: var(--muted); font-size: 13px; line-height: 1.45; font-weight: 520; }
+  .tile .label { color: var(--muted); font-size: 13px; line-height: 1.45; font-weight: 520; min-height: 2.9em; }
   .tile .value { font-size: 1.9rem; line-height: 1.15; font-weight: 650; letter-spacing: -0.025em; margin: 10px 0 4px;
                  font-variant-numeric: tabular-nums; color: var(--ink); }
   .tile .sub { color: var(--muted); font-size: 12.5px; margin-top: auto; }
