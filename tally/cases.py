@@ -310,11 +310,12 @@ def needs_case(store: Store, inv: dict, ev: dict) -> bool:
     return True
 
 
-def write_case(store: Store, inv: dict, ev: dict | None = None, models: list[str] | None = None) -> int:
-    """Ask SERV for a case file on one held invoice, check it, and save it with its ledger entry."""
+def write_case(store: Store, inv: dict, ev: dict | None = None, models: list[str] | None = None, system: str = SYSTEM) -> int:
+    """Ask SERV for a case file on one held invoice, check it, and save it with its ledger entry. `system` is for the
+    lab, which compares wordings of the instructions; the advisor always uses SYSTEM."""
     ev = ev or evidence(store, inv)
     try:
-        a = reason_json(SYSTEM, request_text(ev), CASE_SCHEMA, models or CASE_MODELS, name="case_file", effort="low", max_tokens=1600,
+        a = reason_json(system, request_text(ev), CASE_SCHEMA, models or CASE_MODELS, name="case_file", effort="low", max_tokens=1600,
                         tools=SERV_TOOLS)
     except InferenceError as e:
         return store.save_case(WORKER, inv["id"], basis(ev), evidence=ev, proposal=None, casefile=None, detail={"why": str(e)[:300]})
