@@ -20,6 +20,7 @@
     {% if user %}
     <nav>
       <a href="{{ url_for('queue') }}">Invoices</a>
+      <a href="{{ url_for('payruns_page') }}">Payment runs</a>
       <a href="{{ url_for('vendors') }}">Vendors</a>
       <a href="{{ url_for('pos') }}">Purchase orders</a>
       <a href="{{ url_for('ledger_page') }}">Ledger</a>

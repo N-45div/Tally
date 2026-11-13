@@ -21,7 +21,7 @@ from pathlib import Path
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 
-from tally import ledger
+from tally import ledger, payruns
 from tally.normalize import key, money, to_cents
 from tally.web import device as device_api, labdata
 from tally.pipeline import recheck
@@ -33,6 +33,7 @@ LOCKOUT_SECONDS = 60
 # The public demo: every upload is opened in a microVM and read by two models, so uploads there are capped.
 DEMO_PER_VISITOR = (5, 600)     # at most 5 uploads in 10 minutes per visitor
 DEMO_PER_HOUR = 40              # and 40 an hour across all visitors
+DEMO_RUNS_PER_HOUR = 10         # payment runs planned in the demo, across all visitors
 
 
 def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab_dir: Path = Path("/var/www/tally/lab"),
@@ -413,6 +414,83 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
         s = store()
         ok, what = ledger.verify(s.db)
         return render_template("ledger.html", ok=ok, what=what, entries=list(reversed(ledger.entries(s.db)))[:300])
+
+    # Payment runs. The web app only records what a person asks for and decides; the advisor worker plans.
+
+    @app.get("/payruns")
+    @login_required
+    def payruns_page():
+        s = store()
+        payable = Counter()
+        totals = Counter()
+        for inv in s.invoices("approved"):
+            if not s.db.execute("SELECT 1 FROM payments WHERE invoice_id = ?", (inv["id"],)).fetchone():
+                payable[inv["currency"]] += 1
+                totals[inv["currency"]] += inv["total_cents"] or 0
+        return render_template("payruns.html", runs=s.payruns(), payable=payable, totals=totals,
+                               today=datetime.now(timezone.utc).date().isoformat())
+
+    @app.post("/payruns")
+    @login_required
+    def payruns_add():
+        s = store()
+        since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds")
+        if in_demo() and s.db.execute("SELECT COUNT(*) FROM payruns WHERE requested_at > ?", (since,)).fetchone()[0] >= DEMO_RUNS_PER_HOUR:
+            flash(f"The demo plans {DEMO_RUNS_PER_HOUR} payment runs an hour. The runs already here show every step.")
+            return redirect(url_for("payruns_page"))
+        cash = to_cents(request.form.get("cash", "").replace(",", ""))
+        pay_date = request.form.get("pay_date", "")
+        try:
+            datetime.strptime(pay_date, "%Y-%m-%d")
+            rid = s.add_payrun(user(), request.form.get("policy", ""), request.form.get("currency", ""), cash or 0, pay_date)
+        except ValueError as e:
+            flash(str(e) if "does not match" not in str(e) else "Give the pay date as a date.")
+            return redirect(url_for("payruns_page"))
+        return redirect(url_for("payrun_page", payrun_id=rid))
+
+    def _payrun_or_404(payrun_id: int) -> dict:
+        run = store().payrun(payrun_id)
+        if run is None:
+            abort(404)
+        return run
+
+    @app.get("/payruns/<int:payrun_id>")
+    @login_required
+    def payrun_page(payrun_id: int):
+        s = store()
+        run = _payrun_or_404(payrun_id)
+        return render_template("payrun.html", run=run, payments=s.payments(payrun_id) if run["status"] == "approved" else [],
+                               entries=[e for e in ledger.entries(s.db) if e["detail"].get("payrun_id") == payrun_id])
+
+    @app.post("/payruns/<int:payrun_id>/approve")
+    @login_required
+    def payrun_approve(payrun_id: int):
+        s = store()
+        try:
+            s.approve_payrun(user(), payrun_id, request.form.get("plan_hash", ""), check=lambda r: payruns.rebuild(s, r))
+        except (ValueError, KeyError) as e:
+            flash(str(e).strip("'"))
+        else:
+            flash("Approved. The payments are recorded to the bank details on file; download the payment file for the bank.")
+        return redirect(url_for("payrun_page", payrun_id=payrun_id))
+
+    @app.post("/payruns/<int:payrun_id>/discard")
+    @login_required
+    def payrun_discard(payrun_id: int):
+        try:
+            store().discard_payrun(user(), payrun_id)
+        except ValueError as e:
+            flash(str(e))
+        return redirect(url_for("payrun_page", payrun_id=payrun_id))
+
+    @app.get("/payruns/<int:payrun_id>/payments.csv")
+    @login_required
+    def payrun_file(payrun_id: int):
+        run = _payrun_or_404(payrun_id)
+        if run["status"] != "approved":
+            abort(404)
+        return app.response_class(payruns.payment_file(store(), run), mimetype="text/csv",
+                                  headers={"Content-Disposition": f"attachment; filename=tally-payment-run-{payrun_id}.csv"})
 
     device_api.register(app, data_dir)
     return app
