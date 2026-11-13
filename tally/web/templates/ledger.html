@@ -1,19 +1,32 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% set layout = "wide" %}
 {% block title %}Ledger{% endblock %}
 {% block main %}
-<h1>Ledger</h1>
-<p class="{{ 'okline' if ok else 'hold' }}">{{ "The chain is intact" if ok else "The chain is broken" }}: {{ what }}.</p>
-<p class="quiet">Every entry carries the hash of the one before it, so an entry changed or removed later breaks the chain from there on.</p>
-<table class="ledger">
-  <thead><tr><th>#</th><th>When</th><th>Who</th><th>What</th><th>Invoice</th><th>Detail</th><th>Hash</th></tr></thead>
-  <tbody>
-  {% for e in entries %}
-    <tr>
-      <td>{{ e.seq }}</td><td>{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td>
-      <td>{% if e.invoice_id %}<a href="{{ url_for('invoice', invoice_id=e.invoice_id) }}">{{ e.invoice_id }}</a>{% endif %}</td>
-      <td class="detail">{{ e.detail | tojson }}</td><td class="quiet">{{ e.hash[:12] }}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Ledger</h1>
+    <p class="page-sub">Every entry carries the hash of the one before it, so an entry changed or removed later breaks the chain from there on.</p>
+  </div>
+</div>
+<div class="callout chain {{ 'ok' if ok else 'bad' }}">
+  {% if ok %}{{ icon.shield("icon icon-lg") }}{% else %}{{ icon.shield_off("icon icon-lg") }}{% endif %}
+  <p class="{{ 'okline' if ok else 'hold' }}"><strong>{{ "The chain is intact" if ok else "The chain is broken" }}</strong>: {{ what }}.</p>
+</div>
+<div class="card">
+  <div class="table-wrap">
+    <table class="data compact ledger-full">
+      <thead><tr><th>#</th><th>When</th><th>Who</th><th>What</th><th>Invoice</th><th>Detail</th><th>Hash</th></tr></thead>
+      <tbody>
+      {% for e in entries %}
+        <tr>
+          <td class="id">{{ e.seq }}</td><td class="when">{{ e.at }}</td><td class="nowrap">{{ e.actor }}</td><td class="kind">{{ e.kind }}</td>
+          <td>{% if e.invoice_id %}<a class="id" href="{{ url_for('invoice', invoice_id=e.invoice_id) }}">{{ e.invoice_id }}</a>{% endif %}</td>
+          <td class="detail">{{ e.detail | tojson }}</td><td class="hash">{{ e.hash[:12] }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% endblock %}

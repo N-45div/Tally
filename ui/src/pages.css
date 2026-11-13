@@ -300,4 +300,63 @@
   a.ref.out { color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-line); }
   td.account { font-family: var(--font-mono); font-size: 12.5px; }
   form.discard { margin: 0 0 16px; }
+
+  /* ================= Records: vendors, purchase orders, ledger, devices, account ================= */
+  .add-form { margin-top: 24px; }
+  .card + .add-form, .vendor-list + .add-form { margin-top: 24px; }
+
+  .vendor-list { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)); align-items: start; }
+  .vendor-list > .card + .card { margin-top: 0; }
+  .vendor { padding: 18px 20px; display: grid; gap: 16px; }
+  .vendor-head { display: flex; gap: 12px; align-items: center; }
+  .vendor-head h2 { margin: 0; font-size: 15.5px; }
+  .vendor-head p { margin: 2px 0 0; }
+  .vendor-avatar { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 9px;
+                   font-weight: 650; font-size: 15px; text-transform: uppercase; color: var(--ink-2); background: var(--surface-3);
+                   box-shadow: inset 0 0 0 1px var(--line); }
+  .facts { display: grid; gap: 12px 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); margin: 0; }
+  .facts > div { min-width: 0; }
+  .facts dt { margin: 0 0 4px; font-size: 12px; font-weight: 560; color: var(--muted); }
+  .facts dd { margin: 0; font-size: 14px; color: var(--ink); }
+  .facts .bank { display: block; font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+  .facts .bank .k { font-family: var(--font-sans); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .vendor-change > form { margin: 14px; }
+  @media (max-width: 640px) { .vendor { padding: 16px; } }
+
+  table.pos td { vertical-align: middle; }
+  .spent { display: inline-grid; justify-items: end; gap: 5px; }
+  .spent progress { appearance: none; width: 88px; height: 4px; border: 0; border-radius: 999px; overflow: hidden; background: var(--surface-3); }
+  .spent progress::-webkit-progress-bar { background: var(--surface-3); border-radius: 999px; }
+  .spent progress::-webkit-progress-value { background: var(--accent); border-radius: 999px; }
+  .spent progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
+  .tag.po-open { color: var(--ok); background: var(--ok-soft); }
+  .tag.po-closed { color: var(--muted); }
+
+  .callout.chain { align-items: center; margin-bottom: 20px; }
+  .callout.chain p { margin: 0; }
+  .callout.chain .okline, .callout.chain .hold { color: var(--ink); }
+  table.ledger-full td { vertical-align: top; }
+  table.ledger-full .kind { white-space: nowrap; font-weight: 540; color: var(--ink); }
+  table.ledger-full .detail { min-width: 18rem; max-width: 34rem; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55;
+                              color: var(--muted); overflow-wrap: anywhere; }
+
+  .new-token { align-items: flex-start; }
+  .new-token h2 { margin: 0 0 6px; font-size: 15px; }
+  .new-token p { margin: 0 0 10px; }
+  code.token { display: block; padding: 12px 14px; border-radius: 8px; font-size: 15px; line-height: 1.5; word-break: break-all;
+               user-select: all; color: var(--ink); background: var(--surface); border: 1px dashed var(--ok-line); }
+  .device-name { display: inline-flex; align-items: center; gap: 8px; }
+  .device-name .icon { color: var(--muted); }
+  .add-device { align-items: flex-end; }
+  .add-device .field { flex: 1 1 16rem; }
+  table.asked .heard { font-style: italic; color: var(--ink-2); min-width: 12rem; }
+  table.asked td { min-width: 0; }
+
+  .auth-card { padding: 28px; }
+  .auth-card h1 { margin: 14px 0 20px; font-size: 1.375rem; }
+  .auth-card .btn { width: 100%; margin-top: 4px; }
+  .auth-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px;
+               color: var(--accent-ink); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
+  .auth-after { margin: 20px 4px 0; text-align: center; color: var(--muted); font-size: 13.5px; }
+  @media (max-width: 640px) { .auth-card { padding: 22px 18px; } }
 }
