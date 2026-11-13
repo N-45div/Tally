@@ -131,6 +131,32 @@ CREATE TABLE IF NOT EXISTS cases (
     detail     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS cases_by_invoice ON cases (invoice_id, basis);
+CREATE TABLE IF NOT EXISTS payruns (
+    id           INTEGER PRIMARY KEY,
+    requested_by TEXT NOT NULL,
+    requested_at TEXT NOT NULL,
+    policy       TEXT NOT NULL,
+    currency     TEXT NOT NULL,
+    cash_cents   INTEGER NOT NULL CHECK (cash_cents > 0),
+    pay_date     TEXT NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('queued', 'planned', 'failed', 'approved', 'discarded')),
+    plan         TEXT,
+    plan_hash    TEXT,
+    detail       TEXT,
+    decided_by   TEXT,
+    decided_at   TEXT
+);
+CREATE TABLE IF NOT EXISTS payments (
+    id           INTEGER PRIMARY KEY,
+    payrun_id    INTEGER NOT NULL REFERENCES payruns(id),
+    invoice_id   INTEGER NOT NULL UNIQUE REFERENCES invoices(id),
+    vendor_id    INTEGER NOT NULL REFERENCES vendors(id),
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    currency     TEXT NOT NULL,
+    pay_to       TEXT NOT NULL,
+    pay_date     TEXT NOT NULL,
+    at           TEXT NOT NULL
+);
 """
 JSON_COLUMNS = ("airlock", "reading", "check_reading", "decision")
 DESK_ASKS_PER_HOUR = 60     # questions one device may send in an hour
@@ -639,6 +665,113 @@ class Store:
             ledger.append(db, actor, "case file written" if casefile is not None else "case file failed",
                           {"case_id": cid, "basis": basis} | detail, invoice_id)
         return cid
+
+    # Payment runs (tally.payruns): a person asks for a run with a policy in their own words; a model proposes which
+    # approved invoices to pay; code checks the plan; a person approves that exact plan. Tally then writes the payment
+    # file for the bank from the bank details on file. It records payments; it does not move money.
+
+    def add_payrun(self, actor: str, policy: str, currency: str, cash_cents: int, pay_date: str) -> int:
+        policy = " ".join(policy.split())
+        if not policy:
+            raise ValueError("say how this run should choose what to pay")
+        if len(policy) > 800:
+            raise ValueError("keep the policy under 800 characters")
+        if cash_cents <= 0:
+            raise ValueError("say how much cash this run may use")
+        with self.tx() as db:
+            rid = db.execute("INSERT INTO payruns (requested_by, requested_at, policy, currency, cash_cents, pay_date, status)"
+                             " VALUES (?, ?, ?, ?, ?, ?, 'queued')", (actor, _now(), policy, key(currency), cash_cents, pay_date)).lastrowid
+            ledger.append(db, actor, "payment run requested", {"payrun_id": rid, "policy": policy, "currency": key(currency),
+                                                                "cash_cents": cash_cents, "pay_date": pay_date})
+        return rid
+
+    @staticmethod
+    def _payrun_dict(row) -> dict:
+        r = dict(row)
+        for k in ("plan", "detail"):
+            r[k] = json.loads(r[k]) if r[k] else None
+        return r
+
+    def payrun(self, payrun_id: int) -> dict | None:
+        row = self.db.execute("SELECT * FROM payruns WHERE id = ?", (payrun_id,)).fetchone()
+        return self._payrun_dict(row) if row else None
+
+    def payruns(self) -> list[dict]:
+        return [self._payrun_dict(r) for r in self.db.execute("SELECT * FROM payruns ORDER BY id DESC")]
+
+    def claim_payrun(self) -> dict | None:
+        row = self.db.execute("SELECT * FROM payruns WHERE status = 'queued' ORDER BY id LIMIT 1").fetchone()
+        return self._payrun_dict(row) if row else None
+
+    def payable(self, currency: str) -> list[dict]:
+        """Approved invoices in this currency that no approved run has paid yet."""
+        return [self.invoice(r[0]) for r in self.db.execute(
+            "SELECT id FROM invoices WHERE status = 'approved' AND currency = ? AND vendor_id IS NOT NULL"
+            " AND id NOT IN (SELECT invoice_id FROM payments) ORDER BY id", (key(currency),))]
+
+    def save_payrun_plan(self, actor: str, payrun_id: int, *, plan: dict | None, plan_hash: str | None, detail: dict) -> None:
+        with self.tx() as db:
+            run = self.payrun(payrun_id)
+            if run is None or run["status"] != "queued":
+                raise ValueError("only a queued payment run is planned")
+            db.execute("UPDATE payruns SET status = ?, plan = ?, plan_hash = ?, detail = ? WHERE id = ?",
+                       ("planned" if plan is not None else "failed", json.dumps(plan) if plan is not None else None, plan_hash,
+                        json.dumps(detail), payrun_id))
+            ledger.append(db, actor, "payment run planned" if plan is not None else "payment run not planned",
+                          {"payrun_id": payrun_id, "plan_hash": plan_hash} | detail)
+
+    def approve_payrun(self, actor: str, payrun_id: int, plan_hash: str, check: Callable[[dict], tuple[dict, str]]) -> dict:
+        """Approve the exact plan the person saw, by its hash. `check(run)` rebuilds the payments from the records as
+        they are now, inside this transaction, and returns them with the hash they make; if anything differs from
+        what was shown (an invoice, a vendor's bank details, the cash), the whole run is refused. Each payment goes
+        to the bank details on file, with one ledger entry per payment."""
+        with self.tx() as db:
+            run = self.payrun(payrun_id)
+            if run is None:
+                raise KeyError(f"no payment run {payrun_id}")
+            if run["status"] != "planned":
+                raise ValueError(f"a payment run that is {run['status']} cannot be approved")
+            if plan_hash != run["plan_hash"]:
+                raise ValueError("this is not the plan that was shown; open the run again")
+            fresh, fresh_hash = check(run)
+            if fresh_hash != run["plan_hash"]:
+                raise ValueError("the records changed since the plan was made; plan the run again")
+            for p in fresh["pay"]:
+                db.execute("INSERT INTO payments (payrun_id, invoice_id, vendor_id, amount_cents, currency, pay_to, pay_date, at)"
+                           " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                           (payrun_id, p["invoice"], p["vendor_id"], p["amount_cents"], run["currency"], json.dumps(p["pay_to"]),
+                            run["pay_date"], _now()))
+                ledger.append(db, actor, "payment scheduled", {"payrun_id": payrun_id, "amount_cents": p["amount_cents"],
+                                                               "currency": run["currency"], "vendor": p["vendor"], "pay_to": p["pay_to"],
+                                                               "pay_date": run["pay_date"]}, p["invoice"])
+            db.execute("UPDATE payruns SET status = 'approved', decided_by = ?, decided_at = ? WHERE id = ?", (actor, _now(), payrun_id))
+            ledger.append(db, actor, "payment run approved", {"payrun_id": payrun_id, "plan_hash": plan_hash, "payments": len(fresh["pay"]),
+                                                               "total_cents": sum(p["amount_cents"] for p in fresh["pay"])})
+        return self.payrun(payrun_id)
+
+    def discard_payrun(self, actor: str, payrun_id: int) -> None:
+        with self.tx() as db:
+            run = self.payrun(payrun_id)
+            if run is None or run["status"] not in ("queued", "planned", "failed"):
+                raise ValueError("only a run that is not approved can be discarded")
+            db.execute("UPDATE payruns SET status = 'discarded', decided_by = ?, decided_at = ? WHERE id = ?", (actor, _now(), payrun_id))
+            ledger.append(db, actor, "payment run discarded", {"payrun_id": payrun_id})
+
+    def payments(self, payrun_id: int) -> list[dict]:
+        out = []
+        for r in self.db.execute("SELECT p.*, v.name AS vendor FROM payments p JOIN vendors v ON v.id = p.vendor_id"
+                                 " WHERE payrun_id = ? ORDER BY p.id", (payrun_id,)):
+            d = dict(r)
+            d["pay_to"] = json.loads(d["pay_to"])
+            out.append(d)
+        return out
+
+    def spent_on_reasoning_today(self) -> float:
+        """Dollars spent today on SERV Reasoning, by case files and payment-run plans, for the daily budget."""
+        day = datetime.now(timezone.utc).date().isoformat()
+        on_cases = self.db.execute("SELECT COALESCE(SUM(json_extract(detail, '$.usd')), 0) FROM cases WHERE at >= ?", (day,)).fetchone()[0]
+        on_runs = self.db.execute("SELECT COALESCE(SUM(json_extract(detail, '$.usd')), 0) FROM payruns WHERE requested_at >= ?", (day,)).fetchone()[0]
+        return float(on_cases) + float(on_runs)
 
 
 def desk_actor(device: dict) -> str:

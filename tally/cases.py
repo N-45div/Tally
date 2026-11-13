@@ -1,8 +1,5 @@
 """Case files for held invoices: SERV Reasoning weighs the evidence, code decides what may be proposed.
 
-    python -m tally.cases <data_dir>          write a case file for each held invoice that needs one, until stopped
-    python -m tally.cases <data_dir> once     the same, once
-
 The fixed rules hold an invoice; they do not say what to do next. A person then has to work out whether a changed
 bank account is an attempted fraud or a vendor that moved banks, whether a missing purchase order is paperwork, and
 which call to make first. This worker gathers what Tally's own records say (the failed checks, the vendor's history,
@@ -19,19 +16,15 @@ Nothing printed on an invoice reaches the model except amounts, dates, and the c
 an account. Names, references and free text printed on the invoice stay out, so words an attacker printed cannot
 steer the case file. The page images and the text layer never come here.
 
-Like the other workers, this one holds a model key (OPENSERV_API_KEY); the web app only shows what it wrote.
+The worker that writes them is tally.advisor, which holds the SERV key; the web app only shows what it wrote.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import statistics
-import sys
-import time
 from datetime import date, datetime, timezone
-from pathlib import Path
 
 from tally.normalize import bank, iban_ok, key, money
 from tally.rules import COMPARED, _find_vendor
@@ -42,7 +35,6 @@ WORKER = "tally case worker"
 CASE_MODELS = ["gpt-5.4-mini", "gemini-2.5-flash"]
 TRIES_PER_BASIS = 3            # failed attempts on the same evidence before the worker stops trying it
 RETRY_AFTER_SECONDS = 300
-BUDGET_USD_PER_DAY = float(os.environ.get("TALLY_CASE_BUDGET_USD", "1.00"))  # model spend a workspace allows a day
 
 # Everything a case file may propose. Approving, paying, releasing a rule's hold, and changing bank details from an
 # invoice are not here, so they cannot be proposed.
@@ -306,11 +298,6 @@ def _case_vendor(store: Store, inv: dict) -> dict | None:
     return _find_vendor(fields.get("vendor_name") or "", store.vendors())[1] if fields else None
 
 
-def spent_today(store: Store) -> float:
-    day = datetime.now(timezone.utc).date().isoformat()
-    return sum(json.loads(r[0]).get("usd", 0) for r in store.db.execute("SELECT detail FROM cases WHERE at >= ?", (day,)))
-
-
 def needs_case(store: Store, inv: dict, ev: dict) -> bool:
     attempts = store.case_attempts(inv["id"], basis(ev))
     if any(a["status"] == "written" for a in attempts):
@@ -336,24 +323,3 @@ def write_case(store: Store, inv: dict, ev: dict | None = None, models: list[str
               "tokens": [a.input_tokens, a.output_tokens], "risk": casefile["risk"], "steps": [s["action"] for s in casefile["next_steps"]],
               "findings": len(casefile["findings"]), "dropped": dropped, "serv": ["prompt guard", "shadow agent"]}
     return store.save_case(WORKER, inv["id"], basis(ev), evidence=ev, proposal=a.data, casefile=casefile, detail=detail)
-
-
-def work(store: Store, poll_seconds: float = 5.0, once: bool = False) -> None:
-    while True:
-        for inv in store.invoices("held"):
-            if spent_today(store) >= BUDGET_USD_PER_DAY:
-                print(f"case files: today's budget of ${BUDGET_USD_PER_DAY:.2f} is spent; waiting for tomorrow", flush=True)
-                break
-            ev = evidence(store, inv)
-            if needs_case(store, inv, ev):
-                cid = write_case(store, inv, ev)
-                print(f"invoice {inv['id']}: case {cid}", flush=True)
-        if once:
-            return
-        time.sleep(poll_seconds)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.exit(__doc__)
-    work(Store(Path(sys.argv[1])), once=len(sys.argv) > 2 and sys.argv[2] == "once")
