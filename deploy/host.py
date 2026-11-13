@@ -2,12 +2,14 @@
 
     python deploy/host.py create [--region ewr]    a VX1 instance whose first boot installs and checks this commit
     python deploy/host.py push                     send this commit as a release
+    python deploy/host.py push --settings          the same, carrying the advisor's SERV key (OPENSERV_API_KEY)
     python deploy/host.py status                   print the host's /status.txt
 
 Needs TALLY_DEPLOY_TOKEN; push and status need TALLY_HOST (printed by create). Create also needs VULTR_API_KEY, and
 passes VULTR_INFERENCE_API_KEY (for the worker) and TALLY_FIRST_USER / TALLY_FIRST_PASSWORD (the first person who
 can sign in) to the host's first boot, which writes them to root-only files that the host setup uses and removes.
-A release is `git archive HEAD`: committed files only. The host gets the SHA-256 of the deploy token, never the
+A release is `git archive HEAD`: committed files only, plus, with --settings, the advisor's SERV key from this
+machine's environment, which the host moves out of the release into the tally user's own settings at once. The host gets the SHA-256 of the deploy token, never the
 token. Nothing secret is printed, including the root password Vultr returns.
 """
 from __future__ import annotations
@@ -15,10 +17,12 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import io
 import json
 import os
 import subprocess
 import sys
+import tarfile
 import textwrap
 import time
 import urllib.request
@@ -28,6 +32,7 @@ API = "https://api.vultr.com/v2"
 PLAN = "vx1-g-2c-8g-120s"   # VX1: 2 vCPU, 8 GB, 120 GB, with KVM inside, which Microsandbox needs
 UBUNTU_24_04 = 2284
 ROOT = Path(__file__).resolve().parent.parent
+PUSHED_SETTINGS = ("OPENSERV_API_KEY",)  # the only settings a push may carry: the advisor's, nothing of the workers'
 
 
 def _env(name: str) -> str:
@@ -105,8 +110,26 @@ def create(region: str, label: str) -> None:
     sys.exit("no address yet; check the instance in the Vultr console")
 
 
-def push() -> None:
+def with_settings(tarball: bytes, names: tuple[str, ...] = PUSHED_SETTINGS) -> bytes:
+    """The release plus settings/advisor.env, holding the named settings from this machine's environment. They are
+    never committed; release.sh moves the file into the tally user's own settings before anything else runs."""
+    lines = [f"{n}={_env(n)}\n" for n in names]
+    out = io.BytesIO()
+    with tarfile.open(fileobj=io.BytesIO(tarball), mode="r:gz") as src, tarfile.open(fileobj=out, mode="w:gz") as dst:
+        for m in src.getmembers():
+            dst.addfile(m, src.extractfile(m) if m.isfile() else None)
+        data = "".join(lines).encode()
+        info = tarfile.TarInfo("settings/advisor.env")
+        info.size, info.mode, info.mtime = len(data), 0o600, int(time.time())
+        dst.addfile(info, io.BytesIO(data))
+    return out.getvalue()
+
+
+def push(settings: bool = False) -> None:
     revision, tarball = _release()
+    if settings:
+        tarball = with_settings(tarball)
+        print(f"carrying {', '.join(PUSHED_SETTINGS)} for the advisor (values not shown)")
     req = urllib.request.Request(f"https://{_env('TALLY_HOST')}/deploy", method="POST", data=tarball, headers={
         "Authorization": f"Bearer {_env('TALLY_DEPLOY_TOKEN')}", "X-Tally-Revision": revision,
         "Content-Type": "application/gzip"})
@@ -124,5 +147,6 @@ if __name__ == "__main__":
     ap.add_argument("command", choices=["create", "push", "status"])
     ap.add_argument("--region", default="ewr")
     ap.add_argument("--label", default="tally")
+    ap.add_argument("--settings", action="store_true", help="push: carry the advisor's SERV key")
     a = ap.parse_args()
-    {"create": lambda: create(a.region, a.label), "push": push, "status": status}[a.command]()
+    {"create": lambda: create(a.region, a.label), "push": lambda: push(a.settings), "status": status}[a.command]()

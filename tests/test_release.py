@@ -28,3 +28,19 @@ def test_a_release_has_no_crlf_line_endings():
     assert len(revision) == 40
     assert any(m.name == "deploy/release.sh" for m in files)
     assert crlf == []
+
+
+@pytest.mark.skipif(subprocess.run(["git", "rev-parse", "--git-dir"], cwd=ROOT, capture_output=True).returncode != 0,
+                    reason="not a git checkout (a release on the host is an unpacked archive)")
+def test_a_push_carries_the_advisor_settings_only_when_asked_and_nothing_else_changes(monkeypatch):
+    host = _host()
+    _, plain = host._release()
+    monkeypatch.setenv("OPENSERV_API_KEY", "serv_test_value")
+    carried = host.with_settings(plain)
+    with tarfile.open(fileobj=io.BytesIO(plain), mode="r:gz") as a, tarfile.open(fileobj=io.BytesIO(carried), mode="r:gz") as b:
+        before = {m.name: a.extractfile(m).read() for m in a.getmembers() if m.isfile()}
+        after = {m.name: b.extractfile(m).read() for m in b.getmembers() if m.isfile()}
+        mode = b.getmember("settings/advisor.env").mode
+    assert not any(n.startswith("settings/") for n in before)
+    assert set(after) - set(before) == {"settings/advisor.env"} and all(after[n] == before[n] for n in before)
+    assert after["settings/advisor.env"] == b"OPENSERV_API_KEY=serv_test_value\n" and mode == 0o600
