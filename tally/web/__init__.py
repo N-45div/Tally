@@ -233,7 +233,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
         if len(mine) >= DEMO_PER_VISITOR[0]:
             return f"The demo takes {DEMO_PER_VISITOR[0]} uploads per visitor every {DEMO_PER_VISITOR[1] // 60} minutes. Try again in a few minutes."
         since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds")
-        if store().db.execute("SELECT COUNT(*) FROM invoices WHERE uploaded_at > ?", (since,)).fetchone()[0] >= DEMO_PER_HOUR:
+        visitors = "SELECT COUNT(*) FROM invoices WHERE uploaded_at > ? AND uploaded_by != 'demo'"  # not what the demo was built with
+        if store().db.execute(visitors, (since,)).fetchone()[0] >= DEMO_PER_HOUR:
             return "The demo has had all the uploads it takes this hour. The samples already in the queue show every step."
         return None
 

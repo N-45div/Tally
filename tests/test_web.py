@@ -219,8 +219,8 @@ def test_demo_uploads_are_capped_per_visitor(demo_app):
     r = c.post("/upload", data={"csrf": csrf(c), "files": [(BytesIO(b"%PDF-1.7 more"), "more.pdf")]},
                content_type="multipart/form-data", follow_redirects=True)
     assert b"uploads per visitor" in r.data
-    from lab.demo import PRELOADED
-    assert len(Store(demo_app.demo_dir).invoices()) == len(PRELOADED) + DEMO_PER_VISITOR[0]
+    from lab.demo import HISTORY, PRELOADED
+    assert len(Store(demo_app.demo_dir).invoices()) == len(PRELOADED) + len(HISTORY) + DEMO_PER_VISITOR[0]
 
 
 def test_the_queue_counts_invoices_by_status_and_filters_by_it(app):
