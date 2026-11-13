@@ -11,14 +11,99 @@ pages as images, which are what a person would see, and a report of anything hid
 reads the images, never the text layer. Fixed rules, not the model, decide whether an invoice is held, and nothing is
 paid until a person approves it.
 
+Where code cannot judge, Tally asks [SERV Reasoning](https://docs.openserv.ai/serv-reasoning/why) and only takes
+advice: a case file for each held invoice (is a new bank account an attempted fraud or a vendor that moved banks,
+and which call to make first), and a plan for each payment run, read against the team's own policy in its own words.
+Code checks every answer before anyone sees it, and a person decides.
+
+## Judgement from SERV Reasoning, decisions from code
+
+**Case files for held invoices.** The rules hold an invoice; they do not say what to do next. The advisor worker
+gathers what Tally's records say about it (the checks that failed, the vendor's history and past bank changes,
+other holds, the purchase order, earlier copies) and asks SERV Reasoning to weigh it: a summary, a risk, findings
+that each cite the evidence they rest on, and next steps from a fixed list allowed for those holds. Code then keeps
+only findings whose evidence exists and steps on the list, never lets a changed bank account be called "low" risk,
+and writes the phone script itself, with the number on file. Approving, paying, releasing and changing bank details
+are not on the list, so they cannot be proposed. The invoice page shows the case file under the checks, with the
+evidence it was written from; the queue shows each held invoice's risk.
+
+**Payment runs from a policy in plain words.** A person asks for a run: "Keep 5,000 back for payroll. Rent and
+utilities are never late. Pay small suppliers before larger ones. Anything over 8,000 waits for month end unless it
+is overdue", with the cash available and a pay date. SERV Reasoning reads that against the approved invoices,
+decides which supplier is a utility or a landlord from its name on file, and proposes what to pay now and what to
+leave, saying how it read each rule. It chooses among approved invoices only and gives no amount and no payee: code
+fills both from the records, trims the plan to the cash, flags anything left overdue, and shows its own plan (due
+soonest first) beside it. A person approves the exact plan by its hash; it is rebuilt from the records inside that
+transaction, so a bank account changed in the meantime refuses the whole run. Tally then writes the payment file for
+the bank from the bank details on file. It records payments; it does not move money.
+
+| | Case file | Payment run |
+|---|---|---|
+| SERV model | `gpt-5.4-mini`, then `gemini-2.5-flash` | `gpt-5.4-mini`, then `gemini-2.5-flash` |
+| SERV features | strict JSON schema, prompt guard, shadow agent (its hint: every finding cites given evidence, every step is allowed) | strict JSON schema |
+| What the model sees | evidence built by code from records; of the invoice, only amounts, dates and an account's country and last four characters | the policy, the cash, the pay date, and the approved invoices by vendor name on file, amount and dates |
+| What code checks | cited evidence exists; steps allowed for the holds; a risk floor per hold; the phone script | ids on the list; within the cash; amounts and payees from records; overdue flags; approval by hash, rebuilt from records |
+| In the ledger | model, SERV request id, cost, what code dropped | the plan's hash, model, SERV request id, cost, one entry per payment |
+
+Measured live, Nov 13 (`tests/test_cases.py`, `tests/test_payruns.py` and `lab/reppo.py` repeat these):
+
+- Four held invoices, one case file each, $0.002 to $0.005 and 9 to 26 seconds each, nothing dropped by code: an
+  unannounced switch to a German account on a vendor paid six times from a UK one, for 3.75 times its usual amount
+  (high risk; phone the number on file first, then record the change only if confirmed, else reject as attempted
+  fraud); a name one letter off a vendor on file (high; phone the real vendor); no purchase order on a regular water
+  bill (low; ask whoever ordered it); a copy of an approved invoice (medium; reject as a duplicate).
+- The first wording of the risk guidance called that German account "medium, likely a mismatch". Naming the signals
+  of invoice fraud in the guidance made it "high". One answer from a model that varies proves little, so Reppo's
+  panel of independent evaluators graded six held cases under each wording, each case in a workspace of its own
+  (`lab/reppo.py`; synthetic records only, as Reppo's evaluations are public). The first wording averaged 95.2 of
+  100, with the foreign-account case at 71 (completeness 56, factual accuracy 62); the wording in use scored 100 on
+  all six, each routed "ship". A third wording, written after Reppo marked one case file down for a summary that
+  disagreed with its own risk, graded no better (96.2): that low mark came from the lab itself, which had put every
+  held invoice under one vendor, so each case saw the others' holds. It was not kept.
+- One payment run, with the policy above, 13,500 of cash and seven approved invoices from five suppliers: SERV kept
+  5,000 back, paid the overdue water bill, the rent and the small electrician first, and left the 9,600 hosting bill
+  to month end, 7,036.70 in all, for $0.007 in 13 seconds. Code's due-date plan would have paid 9,346.70 and broken
+  the payroll reserve. Reppo graded a plan for the same run 100, routed "ship".
+- The whole graded comparison (18 case files and a plan) cost $0.08 of SERV and 7,920 of Reppo's credits.
+
+The advisor holds the SERV key and nothing else; the web app has no model key. Each workspace caps SERV spending per
+day ($1 by default, $0.50 for the public demo).
+
+## How this was built
+
+Tally was built from Nov 3 to Nov 8: the airlock, the two readers, the rules, the ledger, the web app, the lab, the
+FATURA benchmark and the desk device, running on Vultr. From Nov 13 it was extended for OpenServ's SERV Hackathon,
+Edition 02, which asks for entries built on SERV Reasoning. Everything in the section above, and nothing before it,
+was built for that, in the open, in the commits from `e185f0d` on.
+
+How we chose what to build, briefly:
+
+1. **Where does Tally need judgement that code cannot give?** Not in reading (two models already check each other,
+   and SERV documents no image input) and not in deciding (the rules must stay code). It needed judgement in two
+   places a person works by hand today: working out what a hold means, and choosing what to pay when cash is short.
+2. **The options.** (A) SERV plans payment runs, and an agent pays them through Kite Passport within spending
+   limits; (B) SERV investigates each hold into a case file; (C) people's releases and rejections as feedback through
+   Reppo to reduce false holds; (D) the desk board's button as a payment trigger.
+3. **What research changed.** Payment preflights ("check, then pay, hold or block") were already common among
+   entries, and a plain-English payment policy had won before, so a payment agent alone would not be new. No one
+   else opened real invoice files, kept vendor records, paid only bank details on file, or had a desk device. So the
+   model goes where a case needs judgement and nowhere else, and what decides is never the only thing that checks.
+4. **What we dropped, and why.** Kite pays USDC to crypto addresses; suppliers are paid by bank transfer, and Tally's
+   rule is payment to the bank details on file, so Kite stays a possible future rail, not a feature. Reppo's
+   evaluations are public, so it cannot see real invoices; it grades the advisor in the lab on synthetic ones
+   instead. A button that pays would break the rule that a desk device can never approve; at most it could one day
+   be a second key on a plan already approved on screen.
+5. **What we built.** (B) case files and (A) payment runs without the payment agent, each with SERV proposing and
+   code checking, the advisor on the host, a demo with a supplier history to try them on, and Reppo's grades.
+
 ## Live Demo
 
 https://github.com/user-attachments/assets/b7c17a91-83e7-4b2d-8f57-ac090d3b0725
 
-## How it runs on Vultr
+## How it runs: Vultr and SERV Reasoning
 
-Everything runs on Vultr: one cloud instance for the app and the sandboxes, and Vultr Serverless Inference for every
-model call.
+Tally runs on Vultr: one cloud instance for the app and the sandboxes, and Vultr Serverless Inference for reading
+invoices and for speech. The advisor's judgement comes from SERV Reasoning.
 
 ```mermaid
 flowchart LR
@@ -30,9 +115,11 @@ flowchart LR
     K["Invoice worker"] --> S
     K -->|"one per file"| M["Microsandbox microVM<br/>no network, no keys<br/>PDF in; page images and a report out"]
     DW["Desk worker"] --> S
+    A["Advisor<br/>SERV key only"] --> S
   end
   K -->|"page images only"| I["Vultr Serverless Inference"]
   DW -->|"speech, and the person's words"| I
+  A -->|"evidence from records,<br/>approved invoices, the policy"| R["SERV Reasoning"]
 ```
 
 | Vultr service | What Tally uses it for |
@@ -41,6 +128,11 @@ flowchart LR
 | Serverless Inference, chat and vision | Reading each invoice's page images into fixed fields, twice, by two model families: GLM (`glm-5.3-flash`) reads and Qwen (`qwen3.8-flash-next`) checks, each held to a strict JSON schema. The same models sort a question spoken to the desk device into a fixed menu. About $0.0055 an invoice. |
 | Serverless Inference, speech to text | What a person says to the desk device: IBM Granite Speech 5.0 2B, then Whisper Large V3 Turbo, then Qwen3-ASR 1.7B if one fails. |
 | Serverless Inference, text to speech | What the desk device says: Qwen3-TTS 1.7B, then Chatterbox. About $0.0023 for a whole spoken question and answer. |
+
+| SERV Reasoning | What Tally uses it for |
+|---|---|
+| Chat completions with a strict JSON schema (`gpt-5.4-mini`, then `gemini-2.5-flash`) | The advisor's case files and payment-run plans; each answer's SERV request id goes in the ledger. |
+| Prompt guard and shadow agent (SERV's own tools, stripped before the model runs) | On every case file: a guard on the evidence, and a validation loop with a testable hint before code checks it again. |
 
 One invoice, start to finish:
 
@@ -56,6 +148,8 @@ One invoice, start to finish:
    on file, never to an account printed on the invoice. Every step goes in the hash-chained ledger.
 6. The desk device announces each new hold, with why, and answers spoken questions about the queue. It can hold an
    invoice but never approve one.
+7. If it is held, the advisor writes its case file. Once approved, it waits for a payment run: a person asks for one,
+   the advisor plans it, a person approves the plan, and Tally writes the payment file for the bank.
 
 A new host is one command (`python deploy/host.py create`, see [Host](#host)): its first boot installs the current
 commit, and every later release is tested on the host before it replaces the running one.
@@ -261,8 +355,9 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/pytest
 ```
 
-Tests that call the model need `VULTR_INFERENCE_API_KEY`; tests that start microVMs need a host where
-`python -m tally.sandbox doctor` says ready. Both are skipped otherwise.
+Tests that call the model need `VULTR_INFERENCE_API_KEY`, and the advisor's live tests `OPENSERV_API_KEY`; tests
+that start microVMs need a host where `python -m tally.sandbox doctor` says ready. They are skipped otherwise.
+Reppo's grades of the advisor: `python -m lab.reppo <out_dir>` with `OPENSERV_API_KEY` and `REPPO_API_KEY`.
 
 ## Host
 
@@ -271,6 +366,7 @@ Tests that call the model need `VULTR_INFERENCE_API_KEY`; tests that start micro
 ```bash
 python deploy/host.py create    # needs VULTR_API_KEY and TALLY_DEPLOY_TOKEN
 python deploy/host.py push      # sends the current commit; needs TALLY_HOST and TALLY_DEPLOY_TOKEN
+python deploy/host.py push --settings   # the same, carrying the advisor's SERV key (OPENSERV_API_KEY)
 python deploy/host.py status    # prints the host's latest checks
 ```
 
@@ -279,7 +375,9 @@ release is installed, tested and probed, and the output is published at `/status
 every test runs, with none skipped: the microVM, containment, live model, live speech and end-to-end ones too. A
 release replaces the running web app and workers (the invoice worker and the desk worker) only if all of its tests
 pass; otherwise the previous release keeps running. The demo runs beside them: its own worker, and a timer that
-rebuilds its workspace every three hours.
+rebuilds its workspace every three hours. Two advisors, one for the workspace and one for the demo, run with the
+SERV key only; a push with `--settings` carries that key, and the host moves it into the tally user's own settings
+(readable by that user only) before anything from the release runs.
 
 ## Known limits
 
@@ -290,6 +388,13 @@ rebuilds its workspace every three hours.
   and clean-looking pages for a bad file) would pass those checks. The rules about vendors, bank details and
   purchase orders do not depend on the sandbox, and nothing is approved without a person.
 - The ledger shows a quiet edit; it cannot stop someone who rewrites the whole database file from the start.
+- A case file can be wrong. Code makes sure it cites real evidence and proposes only allowed steps, and a changed
+  bank account is never "low" risk, but the weighing is a model's: a person reads it as advice. A payment plan can
+  misread a policy the same way; it can only ever choose among approved invoices, within the cash, and a person
+  approves it. A policy rule such as "keep 5,000 back" is followed by the model, not enforced by code: the cash a
+  person enters is the hard limit.
+- The payment file is a generic CSV (payee, account, amount, reference, date); a bank's own bulk-payment layout may
+  need its columns arranged. Tally does not send it.
 - The lab samples the host's free disk as a whole, so other work at the same moment (a release installing) can make
   an attack look like it used more than it did. An earlier version also counted other microVMs as an attack's leftovers
   and reported four attacks as not contained that were; it now looks for the attack's own microVM by name.

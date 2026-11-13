@@ -14,13 +14,21 @@ duplicates. A person approves, payment is always recorded to the bank details on
 hash-chained ledger. A desk device (an ESP32-S3 board with a mic, speaker and screen) announces holds and answers
 spoken questions about the queue; it can hold an invoice but never approve one.
 
+Where code cannot judge, an advisor worker asks SERV Reasoning (OpenServ) and only proposes: a case file for each
+held invoice (what is wrong, how risky it looks, findings citing evidence, next steps from a fixed list) and a plan
+for each payment run a person asks for (which approved invoices to pay now, read against the team's policy in its
+own words). Code checks every answer, a person decides, and a person approves the exact plan before Tally writes
+the payment file for the bank.
+
 It runs on one Vultr VX1 instance (the app, the workers, a Microsandbox microVM per invoice) and calls Vultr
-Serverless Inference for every model: vision and chat to read invoices and sort spoken questions, speech to text and
-text to speech for the desk device.
+Serverless Inference for reading and speech: vision and chat to read invoices and sort spoken questions, speech to
+text and text to speech for the desk device. The advisor calls SERV Reasoning. Reppo grades the advisor's answers in
+the lab, on synthetic invoices only.
 
 Read these first, in this order: `tally/pipeline.py` (what happens to an invoice), `tally/rules.py` (why it is held),
-`tally/store.py` (the records and the ledger), `tally/sandbox/__init__.py` (the microVM), `tally/desk.py` (the desk
-device's brain), `device/src/main.cpp` (the board).
+`tally/store.py` (the records and the ledger), `tally/sandbox/__init__.py` (the microVM), `tally/cases.py` and
+`tally/payruns.py` (what the advisor may propose, and how code checks it), `tally/desk.py` (the desk device's brain),
+`device/src/main.cpp` (the board).
 
 ## Rules that must not be broken
 
@@ -33,14 +41,20 @@ These are the product. A change that weakens one needs a very good reason, writt
    `tally.sandbox.check.check_output` checks them before anything uses them (names, plain files, PNG headers without
    decoding, exact report shape, the right file's SHA-256, a verdict that follows from the findings).
 3. **The model decides nothing.** `tally/extract.py` only copies fields from images; it has no tools. Holds come from
-   `tally/rules.py`. Two readings by two model families must agree on the fields that decide a payment.
+   `tally/rules.py`. Two readings by two model families must agree on the fields that decide a payment. The
+   advisor's answers are proposals that code checks before saving: a case file keeps only findings that cite
+   evidence it was given and steps allowed for its holds (approving, paying, releasing and changing bank details are
+   not on the list), and its risk is never below the floor for its holds; a payment plan chooses only among approved
+   invoices and never gives an amount or a payee. SERV is given no tool it could call (only SERV's own `serv_*`).
 4. **Payment goes to the bank details on file**, never to an account printed on an invoice. Changing bank details on
-   file needs a note of how it was confirmed, and the ledger keeps the old ones.
+   file needs a note of how it was confirmed, and the ledger keeps the old ones. A payment run is approved by the
+   hash of the exact plan shown and rebuilt from the records inside that transaction; any change refuses it. The
+   payment file is written from the bank details on file; a person sends it to the bank.
 5. **Approval re-runs the checks** inside the same transaction (`Store.decide`), and only a ready invoice can be
    approved. Tally records approvals; it does not move money.
-6. **The web app never opens a file and never has the model key.** It stores uploads and records decisions; the
-   workers (`tally/pipeline.py`, `tally/desk.py`) open, read, listen and speak. The key is in the workers' settings
-   only.
+6. **The web app never opens a file and never has a model key.** It stores uploads and records decisions; the
+   workers (`tally/pipeline.py`, `tally/desk.py`, `tally/advisor.py`) open, read, listen, speak and advise. The Vultr
+   key is in the workers' settings only; the SERV key is the advisor's alone.
 7. **The ledger is append-only.** Triggers refuse UPDATE and DELETE; `ledger.verify` recomputes the chain.
 8. **Pages run no JavaScript**, under a strict content policy (`default-src 'none'`), and every value from an invoice
    is escaped by the templates. Every form carries a token; cookies are SameSite=Strict and HttpOnly.
@@ -50,6 +64,10 @@ These are the product. A change that weakens one needs a very good reason, writt
     `tally/web/device.py` are the whole list, and the store offers a device nothing that approves, rejects or
     releases. The model that sorts a spoken question sees only the person's words; answers are written by code from
     records, and nothing printed on an invoice is spoken. Every question and every hold goes in the ledger.
+11. **Nothing printed on an invoice steers the advisor, and nothing real goes to Reppo.** A case file's evidence is
+    built by code from records (`cases.evidence`); of what an invoice prints, only amounts, dates, and an account's
+    country and last four characters reach SERV (`tests/test_cases.py` checks it). Reppo's evaluations are public, so
+    only the synthetic records `lab/reppo.py` builds are ever sent to it.
 
 ## How it fits together
 
@@ -85,6 +103,24 @@ Announcements: `desk.scan_news` reads new `checked` and `held at approval` ledge
 newly held invoice (`Store.add_desk_news`), and `desk.speak_news` voices it. The board polls `GET /device/news` every
 8 seconds and plays what is new.
 
+### A held invoice's case file, and a payment run, through the code
+
+The advisor (`python -m tally.advisor <data_dir>`) loops: queued payment runs first, then held invoices, while the
+day's SERV spend is under `TALLY_REASONING_BUDGET_USD` (`Store.spent_on_reasoning_today`).
+
+1. Case file: `cases.evidence` assembles items with ids from records (failed checks, vendor, its history and bank
+   changes, other holds, the purchase order, earlier copies). If no case was written from that evidence
+   (`cases.basis`, a hash; three failed tries at most, five minutes apart), `cases.write_case` calls
+   `serv.reason_json` with SERV's prompt guard and shadow agent on, `cases.check_proposal` keeps what code can stand
+   behind and writes the phone script from the number on file, and `Store.save_case` saves it with a `case file
+   written` ledger entry. The invoice page shows the latest one; the queue shows its risk.
+2. Payment run: `POST /payruns` → `Store.add_payrun` (queued). `payruns.plan_run`: `candidates` (approved, unpaid,
+   this currency, from records), SERV's proposal, `check_plan` (ids on the list only, trimmed to the cash in the
+   model's order, overdue flags, code's own `baseline`), `plan_hash`, `Store.save_payrun_plan`. A person approves at
+   `POST /payruns/<id>/approve` with the hash → `Store.approve_payrun(..., check=payruns.rebuild)`: one `payments` row
+   per invoice (unique, so never paid twice) and a `payment scheduled` ledger entry each. `GET
+   /payruns/<id>/payments.csv` is the file for the bank (`payruns.payment_file`).
+
 ### Processes
 
 | Process | Command | Model key | On the host |
@@ -92,6 +128,7 @@ newly held invoice (`Store.add_desk_news`), and `desk.speak_news` voices it. The
 | Web app | `gunicorn 'tally.web:from_env()'` (or `python -m tally.web serve <data_dir> <port>` locally) | no | `tally-web` (user service) |
 | Invoice worker | `python -m tally.pipeline <data_dir> 2` | yes | `tally-worker` |
 | Desk worker | `python -m tally.desk <data_dir>` | yes | `tally-desk` |
+| Advisor | `python -m tally.advisor <data_dir>` | the SERV key only | `tally-advisor` and `tally-demo-advisor`, once a push has carried the key |
 | Demo worker | `python -m tally.pipeline <demo_dir>` | yes | `tally-demo-worker`, and `tally-demo-reset.timer` every 3 hours |
 | Deploy endpoint | `/opt/tally/agent.py` (`deploy/agent.py`, copied at first boot only) | no | `tally-deploy` (system service, runs as `tally`) |
 
@@ -100,7 +137,9 @@ newly held invoice (`Store.add_desk_news`), and `desk.speak_news` voices it. The
 A workspace is a folder: `tally.db` (SQLite, WAL), `files/` (uploads by SHA-256), `pages/<id>/` (page images from
 the microVM), `desk/` (questions and spoken audio; answers kept a day, announcements a week). Tables, all in
 `tally/store.py`: `vendors`, `purchase_orders`, `invoices`, `users`, `devices`, `desk_requests`, `desk_holds`,
-`desk_news`, `desk_state`, and `ledger` (`tally/ledger.py`). Every change goes through a `Store` method that writes
+`desk_news`, `desk_state`, `cases`, `payruns`, `payments`, and `ledger` (`tally/ledger.py`). Payment runs added
+tables only: an invoice stays `approved` once paid (the live database's CHECK constraint and `pos()` depend on it);
+`payments` says it was paid. Every change goes through a `Store` method that writes
 its ledger entry in the same transaction; never write to the tables directly.
 
 ## Map of the code
@@ -109,7 +148,11 @@ its ledger entry in the same transaction; never write to the tables directly.
 |---|---|
 | `tally/airlock/` | Runs inside the guest only. `inspect.py` is the entry point (`python -m tally.airlock.inspect <pdf> <out>`); `hidden.py` finds text a person cannot see (per-character checks with pypdfium2); `active.py` finds JavaScript, launch and submit actions, embedded files, XFA, encryption (pypdf). Limits: 20 MB, 10 pages, 150 dpi, 40 Mpx per page, checked before any page is drawn. |
 | `tally/sandbox/` | `__init__.py`: one Microsandbox microVM per file (`run_in_guest`, `open_invoice`): `--no-net`, 1 CPU, 512 MB, 60 s, a 512 MB guest disk, a 251 MB quota on `/out`, the guest code read-only, removed afterwards, plus a host-side watch that stops a guest writing too much. `check.py`: the output checks. `probe.py`: what a guest can reach (network by data, not connect; fail-closed). `__main__.py`: `prepare`, `doctor`, `open`, `probe`. |
-| `tally/vultr.py` | Where a chat model is called: Vultr Serverless Inference (OpenAI-compatible), JSON that must match a schema, tried across models, with the cost of each call. |
+| `tally/vultr.py` | Where a chat model is called: Vultr Serverless Inference (OpenAI-compatible), JSON that must match a schema, tried across models, with the cost of each call. `ask_json` is the loop every service shares. |
+| `tally/serv.py` | SERV Reasoning (OpenServ, OpenAI-compatible): `reason_json`, with a system prompt always, `max_completion_tokens`, only SERV's own `serv_*` tools, and the `x-openserv-request-id` of each call. |
+| `tally/cases.py` | Case files for held invoices: `evidence` (from records), `request_text`, `check_proposal`, `call_script`, `write_case`, the fixed `ACTIONS` and `ALLOWED` per hold, `RISK_FLOOR`. |
+| `tally/payruns.py` | Payment runs: `candidates`, `baseline`, `check_plan`, `plan_hash`, `rebuild` (for approval), `plan_run`, `payment_file`. |
+| `tally/advisor.py` | The advisor worker: plans queued runs, writes case files, within the day's budget. |
 | `tally/speech.py` | Speech for the desk device, on the same service: Granite Speech, then Whisper, then Qwen3-ASR to listen; Qwen3-TTS, then Chatterbox to speak (licences in the docstring). Only the desk worker calls it. |
 | `tally/extract.py` | The reader: page images to fixed fields. Reader models GLM then Qwen; the checker is always the other family. |
 | `tally/normalize.py` | Exact comparison: cents, identifiers, IBAN check digits, vendor names without company suffixes, lookalike names, currencies by ISO code. |
@@ -120,7 +163,7 @@ its ledger entry in the same transaction; never write to the tables directly.
 | `tally/desk.py` | The desk worker: hears a question, sorts it into a fixed menu, answers from records, holds an invoice if told to, and writes and voices an announcement for each new hold. |
 | `tally/web/` | Flask app. `__init__.py`: home, demo, lab pages, sign-in, queue, invoice review, vendors, purchase orders, ledger, account, devices. `device.py`: the desk device's calls, by bearer token, never a session. `labdata.py`: reads the lab's published results. `templates/`, `static/tally.css`. |
 | `device/` | The desk device's firmware (PlatformIO, Arduino core 2.0.17): `src/main.cpp` (screen, button, Wi-Fi, server calls, USB console), `src/audio.h` (I2S speaker and mic, WAV in and out), `include/board.h` (pins), `include/roots.h` (trusted CAs), `provision.py` (sets server and token over USB). See `device/README.md`. |
-| `lab/` | Evaluation, not shipped in the package: `attacks.py` (24 attack files with expected outcomes), `naive.py` (a text-layer agent with a pay tool, to compare with), `guest.py` (11 attacks from inside the microVM), `run_tally.py`, `__main__.py` (`python -m lab`), `fatura.py` (the FATURA benchmark), `load.py` (the load test), `demo.py` (builds the public demo workspace), `desk_local.py` (Tally on a laptop for the desk device). |
+| `lab/` | Evaluation, not shipped in the package: `attacks.py` (24 attack files with expected outcomes), `naive.py` (a text-layer agent with a pay tool, to compare with), `guest.py` (11 attacks from inside the microVM), `run_tally.py`, `__main__.py` (`python -m lab`), `fatura.py` (the FATURA benchmark), `load.py` (the load test), `demo.py` (builds the public demo workspace, with a supplier history), `desk_local.py` (Tally on a laptop for the desk device), `reppo.py` (Reppo's panel grades the advisor's case files and a plan on synthetic invoices, first wording against current). |
 | `deploy/` | `host.py` (create a host, push a release, read status), `host-setup.sh` (first boot, as root), `release.sh` (every release, as the tally user), `agent.py` (the deploy endpoint), `lab-latest.sh` (runs the lab on the live release). |
 | `tests/` | Everything above. `invoices.py` builds the test invoices, including the attacks. |
 
@@ -162,6 +205,8 @@ set -a; . ~/.tally/tally-local.env; set +a
 | Name | For |
 |---|---|
 | `VULTR_INFERENCE_API_KEY` | live tests, the desk worker on a laptop, and a new host's workers |
+| `OPENSERV_API_KEY` | SERV Reasoning: the advisor, its live tests, `lab.reppo`; reaches the host with `deploy/host.py push --settings` |
+| `REPPO_API_KEY` | `lab.reppo` only (Reppo's evaluations are public: synthetic records only) |
 | `TALLY_HOST` | `deploy/host.py push` and `status`, and the device's server (`https://$TALLY_HOST`) |
 | `TALLY_DEPLOY_TOKEN` | `deploy/host.py push` (the host keeps only its SHA-256) |
 | `TALLY_INSTANCE_ID` | the instance in the Vultr dashboard |
@@ -170,8 +215,8 @@ set -a; . ~/.tally/tally-local.env; set +a
 
 ## Tests
 
-`pytest` runs everything it can. Tests that call a model need `VULTR_INFERENCE_API_KEY` (about $0.01 a run); tests
-that start microVMs need a Linux host with KVM where `python -m tally.sandbox doctor` says ready (Microsandbox
+`pytest` runs everything it can. Tests that call a model need `VULTR_INFERENCE_API_KEY` (about $0.01 a run), and the
+two live advisor tests need `OPENSERV_API_KEY` (about $0.015 a run); tests that start microVMs need a Linux host with KVM where `python -m tally.sandbox doctor` says ready (Microsandbox
 installed, guest files prepared with `python -m tally.sandbox prepare <dir>` and `TALLY_GUEST_ROOT` pointing at
 them). Both are skipped otherwise. On the host nothing is skipped: every release runs the whole suite.
 
@@ -223,7 +268,9 @@ A Vultr VX1 (`vx1-g-2c-8g-120s`: 2 vCPU, 8 GB, 120 GB, KVM inside), Ubuntu 24.04
   (`TALLY_DATA` and the model key); the first person who can sign in. Changing any of this needs a new host: create
   one, check it, then delete the old instance.
 - **A release** (`python deploy/host.py push`): `git archive HEAD` of committed files only, sent to the deploy
-  endpoint with the deploy token. `deploy/release.sh` installs it under `/opt/tally/releases/`, prepares its guest,
+  endpoint with the deploy token. `push --settings` also carries `settings/advisor.env` (OPENSERV_API_KEY, nothing
+  else, never committed); `release.sh` moves it to `~/.config/tally/advisor.env` (0600) before anything from the
+  release runs. A plain push leaves it in place; the advisors do not start until it exists. `deploy/release.sh` installs it under `/opt/tally/releases/`, prepares its guest,
   runs `msb doctor` and the whole test suite with the worker's settings, probes a guest, and publishes everything at
   `/status.txt`, step by step. Only if every test passes does it replace the services (see Processes).
 - **Background runs**, one at a time under `/var/lib/tally/lab.lock`, after a passing release: the lab (one waiting
@@ -266,8 +313,10 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
 - **FATURA is held out**: never tune the reader's instructions or the rules on it. A bug it exposes in Tally may be
   fixed (as the currency comparison was); say so.
 - **Writing**: plain sentences, the reader in mind, no marketing words, and no event or competition names anywhere in
-  the repository. Material written for an outside audience (slides, a video script, a submission form) lives outside
-  the repository.
+  the repository, with one exception the owner asked for on Nov 13: the README's "How this was built" section names
+  the event the SERV Reasoning work was built for, and says plainly what existed before it and what was added during
+  it. Leave that section as it is. Material written for an outside audience (slides, a video script, a submission
+  form) lives outside the repository.
 - **Secrets**: never committed, never printed, never passed into a sandbox. A deploy is a production change: push
   only what has passed its tests locally.
 
@@ -319,6 +368,20 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
 - Live tests that ask the menu model are not perfectly repeatable; a release failed twice on "how many" questions
   until a fixed rule made "how many" a count (`desk.fixed_rules`).
 - On the first laptop, port 8080 belonged to another service; the laptop tool uses 8765.
+- SERV Reasoning refuses a request without a system prompt (400), and its OpenAI models refuse `max_tokens` (400,
+  "use max_completion_tokens"); Gemini and Claude accept `max_completion_tokens` too, so `tally/serv.py` always sends
+  that. SERV has no Qwen, GLM or DeepSeek (removed in Aug and Sep), so the advisor's families are OpenAI and Google.
+  Image input is not documented, which is one reason reading stays on Vultr.
+- SERV generates its reasoning plan from the system prompt and caches it per organisation for 30 days, so the
+  advisor's system prompts are fixed text and everything about one invoice or run goes in the user message.
+- The first wording of the case-file risk guidance called an unannounced switch to a German account, on a vendor
+  paid six times from a UK one and for 3.75 times its usual amount, "medium, likely a mismatch". Naming the signals
+  of invoice fraud made it "high". Graded by Reppo on six isolated cases (Nov 13): first wording 95.2, the one in use
+  100 (all "ship"). A third, written after Reppo marked down one summary, graded 96.2 and was not kept.
+- A lab can mislead its grader: the first Reppo run put every held invoice under one vendor, so each case file saw
+  the others' holds (a bank-change attempt made a sums error "high"), and Reppo marked it 53 to 56. Each case now
+  gets a workspace of its own. Reppo's evaluators also disagree run to run ("review" with low confidence on answers
+  scored 94 to 100), so compare means over several cases, never one answer.
 
 ## Where things stand (Nov 9)
 
@@ -360,3 +423,8 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
 - **Nov 8**: moved to a new laptop (Windows, uv, PlatformIO on D:); the firmware builds there; the README explains how
   Tally runs on Vultr; this file reorganised so a newcomer can find their way; the host's stuck releases traced to
   CRLF line endings from Windows and fixed; the host running the desk code, and the board on it.
+- **Nov 13**: judgement from SERV Reasoning, decisions from code: the SERV client beside the Vultr one; case files for
+  held invoices; payment runs planned from a policy in plain words, approved by hash, with a payment file for the
+  bank; the advisor worker and its services on the host, its key carried by `push --settings`; a supplier history
+  in the demo; Reppo grading the advisor in the lab, which kept one wording and turned down another. How the
+  options were chosen is in the README's "How this was built".
