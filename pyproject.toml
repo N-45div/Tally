@@ -29,7 +29,7 @@ build-backend = "setuptools.build_meta"
 include = ["tally*"]
 
 [tool.setuptools.package-data]
-"tally.web" = ["templates/*.html", "static/*"]
+"tally.web" = ["templates/*.html", "static/*", "static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

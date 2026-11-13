@@ -10,6 +10,7 @@ const here = (path) => fileURLToPath(new URL(path, import.meta.url));
 
 export default defineConfig({
   base: "./", // url()s in the stylesheet stay relative to it, under Flask's /static/
+  publicDir: here("public"), // copied as they are: favicon.svg
   plugins: [
     tailwindcss(),
     {

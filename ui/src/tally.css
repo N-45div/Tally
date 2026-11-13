@@ -1,6 +1,36 @@
-/* Tally's stylesheet, built by Vite and Tailwind CSS into tally/web/static/tally.css. */
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities) source(none);
+/* Tally's stylesheet, built by Vite and Tailwind CSS into tally/web/static/tally.css (see ui/README.md).
+   The pages run no JavaScript; everything here is plain CSS. */
+@import "tailwindcss" source(none);
 @source "../../tally/web/templates";
-@import "./legacy.css" layer(components);
+
+@import "./tokens.css";
+@import "./base.css";
+@import "./components.css";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* The tokens as utility colours: text-muted, bg-surface, border-line and so on. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+}

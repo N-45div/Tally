@@ -1,0 +1,128 @@
+/* Design tokens. Every colour the pages use is a variable here, set once for light and once for dark. */
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
+    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;
+  --surface-3: #eef0f4;
+  --line: #e2e5ea;
+  --line-soft: #eceef2;
+  --line-strong: #cfd4dc;
+  --ink: #0e1726;
+  --ink-2: #344052;
+  --muted: #5d6878;
+  --faint: #8a93a2;
+  --brand: #4a55d4;
+  --accent: #4a55d4;
+  --accent-hover: #3d47bf;
+  --accent-ink: #3a45c2;
+  --accent-soft: #eef0fe;
+  --accent-line: #cfd4fa;
+  --on-accent: #ffffff;
+  --ok: #12763a;
+  --ok-dot: #1f9d55;
+  --ok-soft: #e8f6ed;
+  --ok-line: #bfe4cb;
+  --ok-solid: #16803f;
+  --ok-solid-hover: #116a33;
+  --warn: #8f5300;
+  --warn-dot: #e09100;
+  --warn-soft: #fdf4e2;
+  --warn-line: #f1d7a1;
+  --bad: #be2630;
+  --bad-dot: #e03a44;
+  --bad-soft: #fdedef;
+  --bad-line: #f4c5ca;
+  --bad-solid: #c8323a;
+  --neutral-soft: #f0f2f5;
+  --neutral-line: #dfe3e9;
+  --neutral-dot: #8a93a2;
+  --code-bg: #f4f5f8;
+  --viewer: #e9ebef;
+  --paper: #ffffff;
+  --grid-line: rgb(14 23 38 / 0.045);
+  --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.05);
+  --shadow-md: 0 6px 16px -4px rgb(15 23 42 / 0.10), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --shadow-lg: 0 24px 48px -18px rgb(15 23 42 / 0.22);
+  --ring: 0 0 0 3px color-mix(in oklab, var(--accent) 30%, transparent);
+
+  /* The lab's status colours: fixed in both modes, always shown with an icon and a label, never alone. */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --bar: #2a78d6;
+  --hair: var(--line);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0a0c10;
+    --surface: #12151b;
+    --surface-2: #161a21;
+    --surface-3: #1e232c;
+    --line: #252b35;
+    --line-soft: #1d222a;
+    --line-strong: #333a46;
+    --ink: #e9ecf1;
+    --ink-2: #c4cad4;
+    --muted: #949eac;
+    --faint: #697381;
+    --brand: #6370ee;
+    --accent: #5865dc;
+    --accent-hover: #6874ea;
+    --accent-ink: #a0aaff;
+    --accent-soft: #181c38;
+    --accent-line: #2d3470;
+    --on-accent: #ffffff;
+    --ok: #63d394;
+    --ok-dot: #3fbf75;
+    --ok-soft: #0e2218;
+    --ok-line: #1c4430;
+    --ok-solid: #1d8547;
+    --ok-solid-hover: #239a53;
+    --warn: #f0b862;
+    --warn-dot: #e9a23b;
+    --warn-soft: #24190a;
+    --warn-line: #4d3713;
+    --bad: #f5848a;
+    --bad-dot: #ec5b63;
+    --bad-soft: #291215;
+    --bad-line: #57232a;
+    --bad-solid: #c93a43;
+    --neutral-soft: #1a1f27;
+    --neutral-line: #2b313b;
+    --neutral-dot: #7c8592;
+    --code-bg: #0d1015;
+    --viewer: #0d1015;
+    --paper: #ffffff;
+    --grid-line: rgb(233 236 241 / 0.04);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35), 0 1px 3px rgb(0 0 0 / 0.25);
+    --shadow-md: 0 8px 20px -6px rgb(0 0 0 / 0.55);
+    --shadow-lg: 0 24px 48px -18px rgb(0 0 0 / 0.7);
+    --bar: #3987e5;
+  }
+}
