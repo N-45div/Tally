@@ -24,7 +24,9 @@ def test_a_release_has_no_crlf_line_endings():
     revision, tarball = _host()._release()
     with tarfile.open(fileobj=io.BytesIO(tarball), mode="r:gz") as t:
         files = [m for m in t.getmembers() if m.isfile()]
-        crlf = [m.name for m in files if b"\r\n" in t.extractfile(m).read()]
+        data = {m.name: t.extractfile(m).read() for m in files}
+    # A binary file (a NUL byte near its start, as git judges it) can hold the bytes \r\n by chance, as a font does.
+    crlf = [name for name, b in data.items() if b"\0" not in b[:8000] and b"\r\n" in b]
     assert len(revision) == 40
     assert any(m.name == "deploy/release.sh" for m in files)
     assert crlf == []
