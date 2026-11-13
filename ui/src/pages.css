@@ -97,6 +97,7 @@
   .tone-rejected .decision-icon { color: var(--bad); background: var(--bad-soft); border-color: var(--bad-line); }
   .decision .actions { display: grid; gap: 10px; padding: 14px 20px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
   .decision .actions .hint { flex: 1 1 12rem; }
+  .decision .actions .inline-form > .btn { min-width: 7.5rem; }
   @media (max-width: 640px) {
     .decision-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 12px; padding: 16px; }
     .decision-text { display: contents; }

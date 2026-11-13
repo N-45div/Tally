@@ -14,6 +14,8 @@
     overflow-wrap: break-word;
   }
   ::selection { background: color-mix(in oklab, var(--accent) 24%, transparent); }
+  /* Light text on a dark ground reads heavier; the variable font lets body text step back a little. */
+  @media (prefers-color-scheme: dark) { body { font-weight: 370; } }
 
   a {
     color: var(--accent-ink);
