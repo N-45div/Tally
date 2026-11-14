@@ -383,6 +383,13 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
   paid six times from a UK one and for 3.75 times its usual amount, "medium, likely a mismatch". Naming the signals
   of invoice fraud made it "high". Graded by Reppo on six isolated cases (Nov 13): first wording 95.2, the one in use
   100 (all "ship"). A third, written after Reppo marked down one summary, graded 96.2 and was not kept.
+- On Nov 14 one release's tests stalled on the host after 44 of about 199 for 30 minutes, until the deploy endpoint
+  stopped it; the previous release kept serving, as designed, so nothing broke, but the demo was not rebuilt. The
+  same commit pushed again passed in 66 s. If a release stalls once, push it again before hunting for a cause.
+- Two model readings can disagree on a good invoice from one run to the next: the lab on release `9a1e3d9` held the
+  clean invoice and the "note to AI readers" one (second reading, then the purchase order and sums it could not
+  match), 22 of 24, with no wrong payment, ten minutes after 24 of 24 on the same reading code. Held is the safe
+  side; it shows on `/lab` as it happened.
 - A lab can mislead its grader: the first Reppo run put every held invoice under one vendor, so each case file saw
   the others' holds (a bank-change attempt made a sums error "high"), and Reppo marked it 53 to 56. Each case now
   gets a workspace of its own. Reppo's evaluators also disagree run to run ("review" with low confidence on answers
@@ -391,7 +398,7 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
 ## Where things stand (Nov 14)
 
 - **Code**: committed and on GitHub; the suite passes locally (see Tests).
-- **Host** (`TALLY_HOST`): running release `9a1e3d9`, whole suite passing there (197 passed, 2 skipped, the live SERV
+- **Host** (`TALLY_HOST`): running release `205a557` (docs only since `9a1e3d9`), whole suite passing there (197 passed, 2 skipped, the live SERV
   tests among them); the web app, both workers, the desk worker, both advisors (the SERV key carried by
   `push --settings` on Nov 14) and the demo. A live QA as a demo visitor passed 27 of 27 (pages, headers, case files
   on the held samples, a payment run planned, approved and downloaded, the ledger intact). The person who can sign in
