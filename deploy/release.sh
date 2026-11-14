@@ -120,7 +120,9 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 UNIT
-  "$REL/.venv/bin/python" -m lab.demo seed "$DEMO"
+  # Rebuilt by every release, as by the timer, so a release that changes what the demo holds shows it at once (the
+  # demo's workers are restarted just below). "seed" builds it only where there is none yet, as on a first boot.
+  "$REL/.venv/bin/python" -m lab.demo reset "$DEMO" 2>/dev/null || "$REL/.venv/bin/python" -m lab.demo seed "$DEMO"
   systemctl --user daemon-reload
   systemctl --user enable tally-web tally-worker tally-desk tally-demo-worker tally-advisor tally-demo-advisor tally-demo-reset.timer
   systemctl --user restart tally-web tally-worker tally-desk tally-demo-worker tally-advisor tally-demo-advisor tally-demo-reset.timer
