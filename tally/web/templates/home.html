@@ -59,6 +59,55 @@
   </div>
 </section>
 
+<section class="band">
+  <div class="wrap">
+    <h2 class="band-title">After the rules: judgement from SERV Reasoning</h2>
+    <p class="band-note">The rules hold an invoice; they do not say what to do next, or what to pay first when cash is short.
+      An advisor asks SERV Reasoning, and only takes advice: code checks every answer, and a person decides.</p>
+  </div>
+  <div class="wrap two">
+    <div class="card card-pad catch">
+      <div class="catch-head"><span class="catch-icon">{{ icon.case() }}</span><h2>A case file for every hold</h2></div>
+      <p class="quiet">Is a new bank account an attempted fraud or a vendor that moved banks, and which call comes first?</p>
+      <ul class="plain">
+        <li>Weighed from the records: the vendor's history, past bank changes, other holds, the purchase order</li>
+        <li>A risk, findings that cite their evidence, and next steps from a fixed list</li>
+        <li>Code drops anything uncited or not allowed, and writes the call with the number on file</li>
+        <li>Nothing printed on the invoice reaches the model but amounts, dates and an account's last four characters</li>
+      </ul>
+    </div>
+    <div class="card card-pad catch">
+      <div class="catch-head"><span class="catch-icon">{{ icon.coins() }}</span><h2>Payment runs from a policy in plain words</h2></div>
+      <p class="quiet">"Keep 5,000 back for payroll. Rent and utilities are never late."</p>
+      <ul class="plain">
+        <li>SERV reads the policy against the approved invoices and proposes what to pay now</li>
+        <li>It chooses among approved invoices only: every amount and payee comes from the records</li>
+        <li>You approve the exact plan; a bank account changed since then refuses the run</li>
+        <li>Tally writes the payment file for your bank, from the bank details on file</li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="tiles">
+      <div class="tile">
+        <div class="label">A case file</div>
+        <div class="value">$0.005</div>
+        <div class="sub">or less, in 9 to 26 seconds, measured live</div>
+      </div>
+      <div class="tile">
+        <div class="label">A payment run planned</div>
+        <div class="value">13 s</div>
+        <div class="sub">for $0.007; it kept the payroll reserve a due-date plan would have broken</div>
+      </div>
+      <div class="tile">
+        <div class="label">Graded by Reppo's evaluators</div>
+        <div class="value">100</div>
+        <div class="sub">on six held cases, against 95.2 for the first wording</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 {% if t %}
 <section class="band">
   <div class="wrap">
@@ -126,7 +175,7 @@
   <div class="wrap foot-inner">
     {{ icon.mark() }}
     <p>Runs on a Vultr VX1 instance, with a Microsandbox microVM for every file and Vultr Serverless Inference for the
-      readings. The pages you see here run no JavaScript. Tally does not move money: an approval records what to pay,
+      readings; the advisor's judgement comes from SERV Reasoning. The pages you see here run no JavaScript. Tally does not move money: an approval records what to pay,
       to whom and to which account.</p>
   </div>
 </footer>
