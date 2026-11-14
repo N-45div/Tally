@@ -1,0 +1,77 @@
+{#- Icons as inline SVG, drawn by the .icon rules in the stylesheet (no style attributes, nothing loaded).
+    Import with {% import "_icons.html" as icon %} and call {{ icon.check() }}, or {{ icon.check("icon icon-lg") }}. -#}
+{% macro mark() -%}
+<svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true" focusable="false"><rect class="bm-bg" width="28" height="28" rx="7.5"/><path class="bm-marks" d="M8.5 8.5v11M12 8.5v11M15.5 8.5v11M19 8.5v11M6.5 17.6 21.5 10.4"/></svg>
+{%- endmacro %}
+{% macro check(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+{%- endmacro %}
+{% macro x(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
+{%- endmacro %}
+{% macro alert(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.3 4.2 2.9 17.5A2 2 0 0 0 4.6 20.5h14.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.2M12 17h.01"/></svg>
+{%- endmacro %}
+{% macro info(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6h.01"/></svg>
+{%- endmacro %}
+{% macro shield(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3 19.5 6v5.6c0 4.5-3.1 8.1-7.5 9.4-4.4-1.3-7.5-4.9-7.5-9.4V6L12 3z"/><path d="m8.8 12.2 2.2 2.2 4.2-4.3"/></svg>
+{%- endmacro %}
+{% macro shield_off(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3 19.5 6v5.6c0 4.5-3.1 8.1-7.5 9.4-4.4-1.3-7.5-4.9-7.5-9.4V6L12 3z"/><path d="M12 8.5v4.5M12 16h.01"/></svg>
+{%- endmacro %}
+{% macro case(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h4l2 2h7A1.5 1.5 0 0 1 20 9.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18V7.5z"/><path d="M8.5 13h7M8.5 16h4.5"/></svg>
+{%- endmacro %}
+{% macro phone(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7.4 3.6 9.6 3.3a1 1 0 0 1 1.1.6l1.3 3.2a1 1 0 0 1-.3 1.1L10 9.5a11.5 11.5 0 0 0 4.5 4.5l1.3-1.7a1 1 0 0 1 1.1-.3l3.2 1.3a1 1 0 0 1 .6 1.1l-.3 2.2a2 2 0 0 1-2.1 1.7C10.7 17.9 6.1 13.3 5.7 5.7a2 2 0 0 1 1.7-2.1z"/></svg>
+{%- endmacro %}
+{% macro file(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8L14 3.5z"/><path d="M14 3.5V8h4.5M9 13h6M9 16.5h4"/></svg>
+{%- endmacro %}
+{% macro upload(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15.5V4M7.5 8.5 12 4l4.5 4.5M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg>
+{%- endmacro %}
+{% macro download(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11.5M7.5 11 12 15.5l4.5-4.5M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg>
+{%- endmacro %}
+{% macro arrow(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14M13.5 6.5 19 12l-5.5 5.5"/></svg>
+{%- endmacro %}
+{% macro inbox(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 13.5 6 6.3A2 2 0 0 1 7.9 5h8.2a2 2 0 0 1 1.9 1.3l2.5 7.2v4.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-4.5z"/><path d="M3.5 13.5H8l1.5 2.5h5l1.5-2.5h4.5"/></svg>
+{%- endmacro %}
+{% macro box(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 2.8v3.2M14.5 2.8v3.2M9.5 18v3.2M14.5 18v3.2M2.8 9.5H6M2.8 14.5H6M18 9.5h3.2M18 14.5h3.2"/></svg>
+{%- endmacro %}
+{% macro eye(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+{%- endmacro %}
+{% macro rules(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 6.5 1.5 1.5 3-3M4 13.5 5.5 15l3-3M11.5 7h8.5M11.5 14h8.5M4.5 19.5h15.5"/></svg>
+{%- endmacro %}
+{% macro person(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c.8-3.8 3.8-6 7.5-6s6.7 2.2 7.5 6"/></svg>
+{%- endmacro %}
+{% macro link(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 14a4 4 0 0 0 5.7 0l3-3A4 4 0 0 0 13 5.3l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+{%- endmacro %}
+{% macro lock(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg>
+{%- endmacro %}
+{% macro speaker(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="3" width="12" height="18" rx="2.5"/><circle cx="12" cy="14" r="3"/><path d="M12 7h.01"/></svg>
+{%- endmacro %}
+{% macro coins(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/></svg>
+{%- endmacro %}
+{% macro calendar(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg>
+{%- endmacro %}
+{% macro quote(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.5 7.5C6.5 8.3 5 10.5 5 14v2.5h4.5V12H7M18.5 7.5c-3 .8-4.5 3-4.5 6.5v2.5h4.5V12H16"/></svg>
+{%- endmacro %}
+{% macro flask(c="icon") -%}
+<svg class="{{ c }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.5 3.5h5M10.5 3.5v5.2L5 18.2A1.5 1.5 0 0 0 6.3 20.5h11.4a1.5 1.5 0 0 0 1.3-2.3l-5.5-9.5V3.5M7.5 14h9"/></svg>
+{%- endmacro %}

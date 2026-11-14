@@ -1,42 +1,60 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
 {% set labels = {"queued": "Waiting", "processing": "Opening", "held": "Held", "ready": "Ready to approve",
                  "approved": "Approved", "rejected": "Rejected", "failed": "Failed"} %}
 {% block head %}{% if counts.queued or counts.processing %}<meta http-equiv="refresh" content="4">{% endif %}{% endblock %}
 {% block title %}Invoices{% endblock %}
 {% block main %}
-<h1>Invoices</h1>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Invoices</h1>
+  </div>
+</div>
+
 <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="upload">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
-  <label>Add invoices (PDF) <input type="file" name="files" accept="application/pdf" multiple required></label>
-  <button>Upload</button>
-  <p class="quiet">Each file is opened in its own sandbox with no network. Nothing is paid until a person approves it.</p>
+  <span class="upload-icon">{{ icon.upload("icon icon-lg") }}</span>
+  <div class="upload-body">
+    <label>Add invoices (PDF) <input type="file" name="files" accept="application/pdf" multiple required></label>
+    <p class="quiet">Each file is opened in its own sandbox with no network. Nothing is paid until a person approves it.</p>
+  </div>
+  <button class="btn btn-primary">Upload</button>
 </form>
+
 {% if total %}
-<nav class="counts" aria-label="Filter by status">
-  <a href="{{ url_for('queue') }}" class="{{ 'on' if not status }}">All <b>{{ total }}</b></a>
+<nav class="facets" aria-label="Filter by status">
+  <a href="{{ url_for('queue') }}" class="facet f-all{{ ' on' if not status }}"{% if not status %} aria-current="true"{% endif %}>All <b>{{ total }}</b></a>
   {% for st in ["held", "ready", "queued", "processing", "approved", "rejected", "failed"] if counts[st] %}
-  <a href="{{ url_for('queue', status=st) }}" class="{{ 'on' if status == st }}">{{ labels[st] }} <b>{{ counts[st] }}</b></a>
+  <a href="{{ url_for('queue', status=st) }}" class="facet f-{{ st }}{{ ' on' if status == st }}"{% if status == st %} aria-current="true"{% endif %}>{{ labels[st] }} <b>{{ counts[st] }}</b></a>
   {% endfor %}
 </nav>
 {% endif %}
+
 {% if invoices %}
-<table>
-  <thead><tr><th>#</th><th>File</th><th>Vendor</th><th class="num">Total</th><th>Status</th><th>Why</th></tr></thead>
-  <tbody>
-  {% for inv in invoices %}
-    {% set fields = (inv.reading or {}).get("fields") or {} %}
-    <tr>
-      <td><a href="{{ url_for('invoice', invoice_id=inv.id) }}">{{ inv.id }}</a></td>
-      <td><a href="{{ url_for('invoice', invoice_id=inv.id) }}">{{ inv.filename }}</a></td>
-      <td>{{ (inv.decision or {}).get("facts", {}).get("vendor_name") or fields.get("vendor_name") or "" }}</td>
-      <td class="num">{% if inv.total_cents is not none %}{{ inv.currency }} {{ inv.total_cents | money }}{% endif %}</td>
-      <td><span class="status {{ inv.status }}">{{ labels[inv.status] }}</span>{% if inv.status == "held" and risks.get(inv.id) %} <span class="risk {{ risks[inv.id] }}" title="From its case file">{{ risks[inv.id] }} risk</span>{% endif %}</td>
-      <td class="why">{% if inv.decision and inv.decision.holds %}{{ inv.decision.holds[0].text }}{% if inv.decision.holds | length > 1 %} (+{{ inv.decision.holds | length - 1 }} more){% endif %}{% elif inv.status == "failed" %}{{ inv.note }}{% endif %}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="card">
+  <div class="table-wrap">
+    <table class="data queue">
+      <thead><tr><th>#</th><th>File</th><th>Vendor</th><th class="num">Total</th><th>Status</th><th>Why</th></tr></thead>
+      <tbody>
+      {% for inv in invoices %}
+        {% set fields = (inv.reading or {}).get("fields") or {} %}
+        <tr>
+          <td class="c-id"><a class="id" href="{{ url_for('invoice', invoice_id=inv.id) }}">{{ inv.id }}</a></td>
+          <td class="c-file"><a href="{{ url_for('invoice', invoice_id=inv.id) }}">{{ inv.filename }}</a></td>
+          <td class="c-vendor">{{ (inv.decision or {}).get("facts", {}).get("vendor_name") or fields.get("vendor_name") or "" }}</td>
+          <td class="num c-total">{% if inv.total_cents is not none %}<span class="cur">{{ inv.currency }}</span> {{ inv.total_cents | money }}{% endif %}</td>
+          <td class="c-status"><div class="pills"><span class="status {{ inv.status }}">{{ labels[inv.status] }}</span>{% if inv.status == "held" and risks.get(inv.id) %} <span class="risk {{ risks[inv.id] }}" title="From its case file">{{ risks[inv.id] }} risk</span>{% endif %}</div></td>
+          <td class="why">{% if inv.decision and inv.decision.holds %}{{ inv.decision.holds[0].text }}{% if inv.decision.holds | length > 1 %} <span class="more">(+{{ inv.decision.holds | length - 1 }} more)</span>{% endif %}{% elif inv.status == "failed" %}{{ inv.note }}{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% else %}
-<p class="quiet">No invoices yet.</p>
+<div class="card empty">
+  {{ icon.inbox() }}
+  <p>No invoices yet.</p>
+</div>
 {% endif %}
 {% endblock %}

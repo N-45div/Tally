@@ -161,7 +161,8 @@ its ledger entry in the same transaction; never write to the tables directly.
 | `tally/ledger.py` | The hash-chained ledger: `append`, `entries`, `verify`. |
 | `tally/pipeline.py` | The invoice worker: claim, open in a microVM, read twice, check, record. `recheck` is the one function that turns an invoice into a decision. |
 | `tally/desk.py` | The desk worker: hears a question, sorts it into a fixed menu, answers from records, holds an invoice if told to, and writes and voices an announcement for each new hold. |
-| `tally/web/` | Flask app. `__init__.py`: home, demo, lab pages, sign-in, queue, invoice review, vendors, purchase orders, ledger, account, devices. `device.py`: the desk device's calls, by bearer token, never a session. `labdata.py`: reads the lab's published results. `templates/`, `static/tally.css`. |
+| `tally/web/` | Flask app. `__init__.py`: home, demo, lab pages, sign-in, queue, invoice review, vendors, purchase orders, ledger, account, devices. `device.py`: the desk device's calls, by bearer token, never a session. `labdata.py`: reads the lab's published results. `templates/` (icons as inline SVG in `_icons.html`), `static/` (`tally.css`, the Inter font, the favicon: built from `ui/`, never edited by hand). |
+| `ui/` | The stylesheet's source, built with Vite and Tailwind CSS into `tally/web/static/` and committed, so the host needs no Node. Pages still run no JavaScript. See `ui/README.md`. |
 | `device/` | The desk device's firmware (PlatformIO, Arduino core 2.0.17): `src/main.cpp` (screen, button, Wi-Fi, server calls, USB console), `src/audio.h` (I2S speaker and mic, WAV in and out), `include/board.h` (pins), `include/roots.h` (trusted CAs), `provision.py` (sets server and token over USB). See `device/README.md`. |
 | `lab/` | Evaluation, not shipped in the package: `attacks.py` (24 attack files with expected outcomes), `naive.py` (a text-layer agent with a pay tool, to compare with), `guest.py` (11 attacks from inside the microVM), `run_tally.py`, `__main__.py` (`python -m lab`), `fatura.py` (the FATURA benchmark), `load.py` (the load test), `demo.py` (builds the public demo workspace, with a supplier history), `desk_local.py` (Tally on a laptop for the desk device), `reppo.py` (Reppo's panel grades the advisor's case files and a plan on synthetic invoices, first wording against current). |
 | `deploy/` | `host.py` (create a host, push a release, read status), `host-setup.sh` (first boot, as root), `release.sh` (every release, as the tally user), `agent.py` (the deploy endpoint), `lab-latest.sh` (runs the lab on the live release). |
@@ -179,6 +180,10 @@ On Windows (the laptop used now), with uv: `uv venv .venv --python 3.12`, then
 caches and toolchains live on D: (uv and pip caches in `D:\ml-cache`, PlatformIO in `D:\platformio` through the user
 variable `PLATFORMIO_CORE_DIR`). In Git Bash the venv's programs are `.venv/Scripts/python.exe` and
 `.venv/Scripts/pio.exe`.
+
+Node is needed only to change the stylesheet: `cd ui && npm ci && npm run build`, then commit the built files in
+`tally/web/static/` (on this laptop Node is in `%LOCALAPPDATA%\Programs\node-v26.13.0-win-x64`, npm's cache in
+`D:\ml-cache\npm`).
 
 Useful commands:
 

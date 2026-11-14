@@ -1,63 +1,81 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
 {% block title %}Devices{% endblock %}
 {% block main %}
-<h1>Desk devices</h1>
-<p class="quiet">A desk device announces invoices as they are held and answers questions about the queue. It can put an
-  invoice on hold and nothing more: it cannot approve, reject or release anything. It speaks only words from Tally's
-  own records (vendor names and phone numbers on file, amounts), never words printed on an invoice. Every question and
-  every hold is in the ledger.</p>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Desk devices</h1>
+    <p class="page-sub">A desk device announces invoices as they are held and answers questions about the queue. It can put an
+      invoice on hold and nothing more: it cannot approve, reject or release anything. It speaks only words from Tally's
+      own records (vendor names and phone numbers on file, amounts), never words printed on an invoice. Every question and
+      every hold is in the ledger.</p>
+  </div>
+</div>
 
 {% if new %}
-<section class="decision ready">
-  <h2>Token for {{ new.name }}</h2>
-  <p>Put this token on the device now. It is shown once and Tally keeps only its hash; if it is lost, revoke the device
-     and add it again.</p>
-  <p><code class="token">{{ new.token }}</code></p>
-  <p class="quiet">With the device on USB: <code>py device/provision.py</code>, then paste the token when it asks.</p>
+<section class="callout ok new-token" aria-labelledby="token-title">
+  {{ icon.lock("icon icon-lg") }}
+  <div>
+    <h2 id="token-title">Token for {{ new.name }}</h2>
+    <p>Put this token on the device now. It is shown once and Tally keeps only its hash; if it is lost, revoke the device
+       and add it again.</p>
+    <p><code class="token">{{ new.token }}</code></p>
+    <p class="quiet small">With the device on USB: <code>py device/provision.py</code>, then paste the token when it asks.</p>
+  </div>
 </section>
 {% endif %}
 
-<table>
-  <thead><tr><th>Name</th><th>Added</th><th>Last heard from</th><th>Firmware</th><th></th></tr></thead>
-  <tbody>
-  {% for d in devices %}
-    <tr>
-      <td>{{ d.name }}</td>
-      <td>{{ d.added_at }} by {{ d.added_by }}</td>
-      <td>{{ d.last_seen or "never" }}</td>
-      <td>{{ d.firmware }}</td>
-      <td>{% if d.revoked_at %}<span class="quiet">revoked {{ d.revoked_at }} by {{ d.revoked_by }}</span>{% else %}
-        <form method="post" action="{{ url_for('revoke_device', device_id=d.id) }}">
-          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Revoke</button>
-        </form>{% endif %}</td>
-    </tr>
-  {% else %}
-    <tr><td colspan="5" class="quiet">No devices yet.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="card">
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Name</th><th>Added</th><th>Last heard from</th><th>Firmware</th><th><span class="sr-only">Revoke</span></th></tr></thead>
+      <tbody>
+      {% for d in devices %}
+        <tr>
+          <td><span class="device-name">{{ icon.speaker() }}<strong>{{ d.name }}</strong></span></td>
+          <td><span class="when">{{ d.added_at }}</span> by {{ d.added_by }}</td>
+          <td class="when">{{ d.last_seen or "never" }}</td>
+          <td class="mono">{{ d.firmware }}</td>
+          <td class="num">{% if d.revoked_at %}<span class="quiet small">revoked {{ d.revoked_at }} by {{ d.revoked_by }}</span>{% else %}
+            <form method="post" action="{{ url_for('revoke_device', device_id=d.id) }}">
+              <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn-danger btn-sm">Revoke</button>
+            </form>{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr class="empty-row"><td colspan="5" class="quiet">No devices yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 
-<h2>Add a device</h2>
-<form method="post" class="stack narrow">
-  <input type="hidden" name="csrf" value="{{ csrf_token }}">
-  <label>Name, for the ledger <input name="name" required maxlength="60" placeholder="e.g. Front desk"></label>
-  <button>Add device</button>
-</form>
+<section class="card add-form" aria-labelledby="add-title">
+  <div class="card-head"><h2 id="add-title">Add a device</h2></div>
+  <form method="post" class="card-body inline-form add-device">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label class="field">Name, for the ledger <input name="name" required maxlength="60" placeholder="e.g. Front desk"></label>
+    <button class="btn btn-primary">Add device</button>
+  </form>
+</section>
 
-<h2>What the devices were asked</h2>
-<table class="ledger">
-  <thead><tr><th>When</th><th>Device</th><th>Heard</th><th>Answered</th><th>Invoice</th></tr></thead>
-  <tbody>
-  {% for e in asked %}
-    <tr>
-      <td>{{ e.at }}</td><td>{{ e.actor }}</td>
-      {% if e.kind == "held from desk" %}<td colspan="2"><strong>Put on hold</strong></td>
-      {% else %}<td>{{ e.detail.heard }}</td><td>{{ e.detail.answer }}</td>{% endif %}
-      <td>{% if e.invoice_id %}<a href="{{ url_for('invoice', invoice_id=e.invoice_id) }}">{{ e.invoice_id }}</a>{% endif %}</td>
-    </tr>
-  {% else %}
-    <tr><td colspan="5" class="quiet">Nothing yet.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+<section class="card" aria-labelledby="asked-title">
+  <div class="card-head"><h2 id="asked-title">What the devices were asked</h2></div>
+  <div class="table-wrap">
+    <table class="data compact asked">
+      <thead><tr><th>When</th><th>Device</th><th>Heard</th><th>Answered</th><th>Invoice</th></tr></thead>
+      <tbody>
+      {% for e in asked %}
+        <tr>
+          <td class="when">{{ e.at }}</td><td class="nowrap">{{ e.actor }}</td>
+          {% if e.kind == "held from desk" %}<td colspan="2"><span class="status held">Put on hold</span></td>
+          {% else %}<td class="heard">{{ e.detail.heard }}</td><td>{{ e.detail.answer }}</td>{% endif %}
+          <td>{% if e.invoice_id %}<a class="id" href="{{ url_for('invoice', invoice_id=e.invoice_id) }}">{{ e.invoice_id }}</a>{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr class="empty-row"><td colspan="5" class="quiet">Nothing yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endblock %}

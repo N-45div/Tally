@@ -1,2 +1,4 @@
 # Shell scripts run with bash on the host: always LF, whatever the checkout's platform.
 *.sh text eol=lf
+# Fonts built into tally/web/static/fonts/: never touch their bytes.
+*.woff2 binary

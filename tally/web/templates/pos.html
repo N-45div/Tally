@@ -1,37 +1,50 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
 {% block title %}Purchase orders{% endblock %}
 {% block main %}
-<h1>Purchase orders</h1>
-<table>
-  <thead><tr><th>Number</th><th>Vendor</th><th class="num">Amount</th><th class="num">Approved so far</th><th class="num">Left</th><th>Status</th><th></th></tr></thead>
-  <tbody>
-  {% for p in pos %}
-    <tr>
-      <td>{{ p.number }}</td><td>{{ p.vendor_name }}</td>
-      <td class="num">{{ p.currency }} {{ p.amount_cents | money }}</td>
-      <td class="num">{{ p.spent_cents | money }}</td>
-      <td class="num">{{ (p.amount_cents - p.spent_cents) | money }}</td>
-      <td>{{ p.status }}</td>
-      <td>{% if p.status == "open" %}
-        <form method="post" action="{{ url_for('close_po', po_id=p.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Close</button></form>
-      {% endif %}</td>
-    </tr>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Purchase orders</h1>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="data pos">
+      <thead><tr><th>Number</th><th>Vendor</th><th class="num">Amount</th><th class="num">Approved so far</th><th class="num">Left</th><th>Status</th><th><span class="sr-only">Close</span></th></tr></thead>
+      <tbody>
+      {% for p in pos %}
+        <tr>
+          <td class="nowrap"><strong>{{ p.number }}</strong></td><td>{{ p.vendor_name }}</td>
+          <td class="num">{{ p.currency }} {{ p.amount_cents | money }}</td>
+          <td class="num"><span class="spent">{{ p.spent_cents | money }}<progress value="{{ [p.spent_cents, p.amount_cents] | min }}" max="{{ p.amount_cents }}" aria-hidden="true"></progress></span></td>
+          <td class="num">{{ (p.amount_cents - p.spent_cents) | money }}</td>
+          <td><span class="tag po-{{ p.status }}">{{ p.status }}</span></td>
+          <td class="num">{% if p.status == "open" %}
+            <form method="post" action="{{ url_for('close_po', po_id=p.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn-secondary btn-sm">Close</button></form>
+          {% endif %}</td>
+        </tr>
+      {% else %}
+        <tr class="empty-row"><td colspan="7" class="quiet">No purchase orders yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<section class="card add-form" aria-labelledby="add-title">
+  <div class="card-head"><h2 id="add-title">Add a purchase order</h2></div>
+  {% if vendors %}
+  <form method="post" class="card-body form-grid">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Number <input name="number" required></label>
+    <label>Vendor <select name="vendor_id" required>{% for v in vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}</select></label>
+    <label>Currency <input name="currency" required maxlength="3" placeholder="GBP"></label>
+    <label>Amount <input name="amount" required inputmode="decimal" placeholder="2000.00"></label>
+    <div class="span-all form-actions"><button class="btn btn-primary">Add purchase order</button></div>
+  </form>
   {% else %}
-    <tr><td colspan="7" class="quiet">No purchase orders yet.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-<h2>Add a purchase order</h2>
-{% if vendors %}
-<form method="post" class="stack narrow">
-  <input type="hidden" name="csrf" value="{{ csrf_token }}">
-  <label>Number <input name="number" required></label>
-  <label>Vendor <select name="vendor_id" required>{% for v in vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}</select></label>
-  <label>Currency <input name="currency" required maxlength="3" placeholder="GBP"></label>
-  <label>Amount <input name="amount" required inputmode="decimal" placeholder="2000.00"></label>
-  <button>Add purchase order</button>
-</form>
-{% else %}
-<p class="quiet">Add a vendor first.</p>
-{% endif %}
+  <div class="card-body"><p class="quiet">Add a vendor first.</p></div>
+  {% endif %}
+</section>
 {% endblock %}

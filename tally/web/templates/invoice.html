@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% set layout = "wide" %}
 {% set labels = {"queued": "Waiting", "processing": "Opening", "held": "Held", "ready": "Ready to approve",
                  "approved": "Approved", "rejected": "Rejected", "failed": "Failed"} %}
 {% block head %}{% if inv.status in ["queued", "processing"] %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
@@ -8,19 +10,28 @@
 {% set facts = decision.get("facts") or {} %}
 {% set first = (inv.reading or {}).get("fields") or {} %}
 {% set second = (inv.check_reading or {}).get("fields") or {} %}
-<h1>Invoice {{ inv.id }} <span class="status {{ inv.status }}">{{ labels[inv.status] }}</span></h1>
-<p class="quiet">{{ inv.filename }} · uploaded by {{ inv.uploaded_by }} at {{ inv.uploaded_at }} · SHA-256 {{ inv.sha256[:16] }}…</p>
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('queue') }}">Invoices</a><span class="sep" aria-hidden="true">/</span><span>Invoice {{ inv.id }}</span></nav>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Invoice {{ inv.id }} <span class="status {{ inv.status }}">{{ labels[inv.status] }}</span></h1>
+    <p class="meta"><span class="meta-file">{{ icon.file() }}{{ inv.filename }}</span><span class="dot" aria-hidden="true">·</span><span>uploaded by {{ inv.uploaded_by }} at {{ inv.uploaded_at }}</span><span class="dot" aria-hidden="true">·</span><span>SHA-256 <span class="mono">{{ inv.sha256[:16] }}</span>…</span></p>
+  </div>
+</div>
 
 {% if inv.status in ["queued", "processing"] %}
-  <p>Opening the file in a sandbox and reading it. This page refreshes by itself.</p>
+  <div class="callout info"><span class="spinner" aria-hidden="true"></span><p>Opening the file in a sandbox and reading it. This page refreshes by itself.</p></div>
 {% elif inv.status == "failed" %}
-  <p class="hold">This invoice could not be processed: {{ inv.note }}</p>
+  <div class="callout bad">{{ icon.alert() }}<p>This invoice could not be processed: {{ inv.note }}</p></div>
 {% endif %}
 
 <div class="review">
 <div class="review-main">
 {% if decision %}
-<section class="decision {{ 'ready' if decision.ready else 'held' }}">
+{% set tone = inv.status if inv.status in ["approved", "rejected"] else ("ready" if decision.ready else "held") %}
+<section class="decision {{ 'ready' if decision.ready else 'held' }} tone-{{ tone }}">
+  <div class="decision-head">
+    <span class="decision-icon">{% if tone == "held" %}{{ icon.alert("icon icon-lg") }}{% elif tone == "rejected" %}{{ icon.x("icon icon-lg") }}{% else %}{{ icon.check("icon icon-lg") }}{% endif %}</span>
+    <div class="decision-text">
   {% if inv.status == "approved" %}
     <h2>Approved by {{ inv.decided_by }}</h2>
     <p>For payment of {{ inv.currency }} {{ inv.total_cents | money }} to {{ vendor.name }}, to the account on file.{% if inv.note %} Note: {{ inv.note }}{% endif %}</p>
@@ -30,121 +41,173 @@
     <h2>Ready to approve</h2>
     <p>Every check passed. Approving it records payment of <strong>{{ inv.currency }} {{ inv.total_cents | money }}</strong>
        to <strong>{{ vendor.name }}</strong>, to the account on file
-       ({% for k, v in vendor.bank.items() if v %}{{ k | replace("_", " ") }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}).
+       (<span class="account">{% for k, v in vendor.bank.items() if v %}{{ k | replace("_", " ") }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</span>).
        The checks run again at the moment of approval.</p>
   {% else %}
     <h2>Held</h2>
-    <ul>{% for h in decision.holds %}<li>{{ h.text }}</li>{% endfor %}</ul>
+    <ul class="holds">{% for h in decision.holds %}<li>{{ h.text }}</li>{% endfor %}</ul>
   {% endif %}
+    </div>
+  </div>
   {% if inv.status in ["held", "ready"] %}
   <div class="actions">
     {% if decision.ready %}
-    <form method="post" action="{{ url_for('decide', invoice_id=inv.id) }}">
+    <form method="post" action="{{ url_for('decide', invoice_id=inv.id) }}" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="decision" value="approve">
-      <input name="note" placeholder="Note (optional)"> <button>Approve</button>
+      <input name="note" placeholder="Note (optional)" aria-label="Note (optional)"> <button class="btn btn-approve">{{ icon.check() }}Approve</button>
     </form>
     {% endif %}
-    <form method="post" action="{{ url_for('decide', invoice_id=inv.id) }}">
+    <form method="post" action="{{ url_for('decide', invoice_id=inv.id) }}" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="decision" value="reject">
-      <input name="note" placeholder="Why it is rejected" required> <button class="secondary">Reject</button>
+      <input name="note" placeholder="Why it is rejected" aria-label="Why it is rejected" required> <button class="btn btn-danger">Reject</button>
     </form>
     {% if desk_holds %}
-    <form method="post" action="{{ url_for('release_desk_hold', invoice_id=inv.id) }}">
+    <form method="post" action="{{ url_for('release_desk_hold', invoice_id=inv.id) }}" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      <input name="note" placeholder="Why the desk hold is lifted" required> <button class="secondary">Release the desk hold</button>
+      <input name="note" placeholder="Why the desk hold is lifted" aria-label="Why the desk hold is lifted" required> <button class="btn btn-secondary">Release the desk hold</button>
     </form>
     {% elif not decision.ready %}
-    <form method="post" action="{{ url_for('check_again', invoice_id=inv.id) }}">
+    <form method="post" action="{{ url_for('check_again', invoice_id=inv.id) }}" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      <button class="secondary" title="After adding a vendor or purchase order">Check again</button>
+      <button class="btn btn-secondary" title="After adding a vendor or purchase order">Check again</button>
+      <span class="hint">After adding a vendor or purchase order</span>
     </form>
     {% endif %}
   </div>
   {% endif %}
 </section>
 
-<h2>Checks</h2>
-<ul class="checks">
-  {% for c in decision.checks %}<li class="{{ 'ok' if c.ok else 'no' }}"><span aria-hidden="true">{{ "✓" if c.ok else "✗" }}</span> {{ c.text }}</li>{% endfor %}
-</ul>
+{% set passed = decision.checks | selectattr("ok") | list | length %}
+<section class="card" aria-labelledby="checks-title">
+  <div class="card-head"><h2 id="checks-title">Checks</h2><p>{{ passed }} of {{ decision.checks | length }} passed</p></div>
+  <ul class="checks">
+    {% for c in decision.checks %}<li class="{{ 'ok' if c.ok else 'no' }}"><span aria-hidden="true">{{ "✓" if c.ok else "✗" }}</span> <span class="sr-only">{{ "Passed:" if c.ok else "Failed:" }}</span> <span>{{ c.text }}</span></li>{% endfor %}
+  </ul>
+</section>
 {% endif %}
 
 {% if case %}
 {% set cf = case.casefile %}{% set d = case.detail %}
-<section class="case">
-  <h2>Case file <span class="risk {{ cf.risk }}">{{ cf.risk }} risk</span></h2>
-  <p>{{ cf.summary }}</p>
-  {% if cf.findings %}
-  <ul class="findings">{% for f in cf.findings %}<li>{{ f.text }} <span class="quiet small">{% for e in f.evidence %}<code>{{ e }}</code>{% if not loop.last %} {% endif %}{% endfor %}</span></li>{% endfor %}</ul>
-  {% endif %}
-  <h3>Next steps</h3>
-  <ol>{% for st in cf.next_steps %}<li><strong>{{ st.says }}</strong> {{ st.why }}</li>{% endfor %}</ol>
-  {% if cf.call %}
-  <h3>The call</h3>
-  <p>Phone <strong>{{ cf.call.vendor }}</strong> on <strong>{{ cf.call.phone }}</strong>, the number on file.</p>
-  <ul>{% for q in cf.call.ask %}<li>{{ q }}</li>{% endfor %}</ul>
-  {% endif %}
-  <details><summary>The evidence it was written from</summary>
-    <p class="quiet small">Assembled by code from Tally's records. Nothing printed on the invoice was sent except amounts, dates, and the country and last four characters of an account.</p>
-    <pre class="evidence">{{ case.evidence | tojson(indent=1) }}</pre>
-  </details>
-  <p class="quiet small">Written by {{ d.model }} through SERV Reasoning (prompt guard and shadow agent on) at {{ case.at }}, in {{ d.seconds }} s, for ${{ "%.4f" | format(d.usd or 0) }}{% if d.serv_request_id %}; SERV request {{ d.serv_request_id }}{% endif %}.
-  Code kept only findings that cite this evidence and steps allowed for these holds{% if d.dropped and (d.dropped.findings or d.dropped.steps or d.dropped.risk) %}, and dropped {{ d.dropped.findings | length }} finding(s) and {{ d.dropped.steps | length }} step(s){% if d.dropped.risk %}; risk {{ d.dropped.risk }}{% endif %}{% endif %}.
-  It decides nothing: the checks hold this invoice, and a person acts on it.</p>
+<section class="case card risk-{{ cf.risk }}" aria-labelledby="case-title">
+  <header class="case-head">
+    <span class="case-icon">{{ icon.case("icon icon-lg") }}</span>
+    <h2 id="case-title">Case file <span class="risk {{ cf.risk }}">{{ cf.risk }} risk</span></h2>
+  </header>
+  <div class="case-body">
+    <p class="case-summary">{{ cf.summary }}</p>
+
+    {% if cf.findings %}
+    <div>
+      <h3 class="section-label">Findings</h3>
+      <ul class="findings">{% for f in cf.findings %}<li><p>{{ f.text }}</p>{% if f.evidence %}<span class="evidence-chips">{% for e in f.evidence %}<code class="chip">{{ e }}</code>{% endfor %}</span>{% endif %}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <div>
+      <h3 class="section-label">Next steps</h3>
+      <ol class="steps">{% for st in cf.next_steps %}<li><strong>{{ st.says }}</strong> <span>{{ st.why }}</span></li>{% endfor %}</ol>
+    </div>
+
+    {% if cf.call %}
+    <div class="call">
+      <span class="call-icon">{{ icon.phone() }}</span>
+      <div>
+        <h3>The call</h3>
+        <p>Phone <strong>{{ cf.call.vendor }}</strong> on <strong class="phone">{{ cf.call.phone }}</strong>, the number on file.</p>
+        <ul>{% for q in cf.call.ask %}<li>{{ q }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <details class="disclosure"><summary>The evidence it was written from</summary>
+      <p class="quiet small">Assembled by code from Tally's records. Nothing printed on the invoice was sent except amounts, dates, and the country and last four characters of an account.</p>
+      <pre class="evidence">{{ case.evidence | tojson(indent=1) }}</pre>
+    </details>
+  </div>
+  <footer class="case-foot">
+    {{ icon.info() }}
+    <p>Written by {{ d.model }} through SERV Reasoning (prompt guard and shadow agent on) at {{ case.at }}, in {{ d.seconds }} s, for ${{ "%.4f" | format(d.usd or 0) }}{% if d.serv_request_id %}; SERV request {{ d.serv_request_id }}{% endif %}.
+    Code kept only findings that cite this evidence and steps allowed for these holds{% if d.dropped and (d.dropped.findings or d.dropped.steps or d.dropped.risk) %}, and dropped {{ d.dropped.findings | length }} finding(s) and {{ d.dropped.steps | length }} step(s){% if d.dropped.risk %}; risk {{ d.dropped.risk }}{% endif %}{% endif %}.
+    It decides nothing: the checks hold this invoice, and a person acts on it.</p>
+  </footer>
 </section>
 {% endif %}
 
 {% if inv.reading %}
-<h2>What was read</h2>
-<p class="quiet">Copied from the page images only, never from the file's text layer.</p>
-<table class="fields">
-  <thead><tr><th>Field</th><th>{{ inv.reading.model }}</th><th>{{ (inv.check_reading or {}).get("model", "second reading") }}</th></tr></thead>
-  <tbody>
-  {% for name in ["vendor_name", "vendor_address", "bill_to", "invoice_number", "invoice_date", "due_date", "po_number", "currency", "subtotal", "tax", "total"] %}
-    <tr class="{{ 'differ' if second and first.get(name) != second.get(name) }}"><th>{{ name | replace("_", " ") }}</th><td>{{ first.get(name) | amount }}</td><td>{{ second.get(name) | amount }}</td></tr>
-  {% endfor %}
-  {% for name in ["account_name", "iban", "account_number", "sort_code", "routing_number", "swift_bic"] %}
-    {% set a = (first.get("pay_to") or {}).get(name) %}{% set b = (second.get("pay_to") or {}).get(name) %}
-    {% if a or b %}<tr class="{{ 'differ' if second and a != b }}"><th>pay to: {{ name | replace("_", " ") }}</th><td>{{ a }}</td><td>{{ b }}</td></tr>{% endif %}
-  {% endfor %}
-  </tbody>
-</table>
-{% if first.get("lines") %}
-<table>
-  <thead><tr><th>Line</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr></thead>
-  <tbody>{% for l in first.lines %}<tr><td>{{ l.description }}</td><td class="num">{{ l.quantity }}</td><td class="num">{{ l.unit_price | amount }}</td><td class="num">{{ l.amount | amount }}</td></tr>{% endfor %}</tbody>
-</table>
-{% endif %}
-<p class="quiet">Reading cost: ${{ "%.4f" | format((inv.reading.usd or 0) + ((inv.check_reading or {}).get("usd") or 0)) }}.</p>
+<section class="card" aria-labelledby="read-title">
+  <div class="card-head">
+    <h2 id="read-title">What was read</h2>
+    <p>Copied from the page images only, never from the file's text layer.</p>
+  </div>
+  <div class="table-wrap">
+    <table class="data fields">
+      <thead><tr><th>Field</th><th>{{ inv.reading.model }}</th><th>{{ (inv.check_reading or {}).get("model", "second reading") }}</th></tr></thead>
+      <tbody>
+      {% for name in ["vendor_name", "vendor_address", "bill_to", "invoice_number", "invoice_date", "due_date", "po_number", "currency", "subtotal", "tax", "total"] %}
+        <tr class="{{ 'differ' if second and first.get(name) != second.get(name) }}"><th>{{ name | replace("_", " ") }}</th><td>{{ first.get(name) | amount }}</td><td>{{ second.get(name) | amount }}</td></tr>
+      {% endfor %}
+      {% for name in ["account_name", "iban", "account_number", "sort_code", "routing_number", "swift_bic"] %}
+        {% set a = (first.get("pay_to") or {}).get(name) %}{% set b = (second.get("pay_to") or {}).get(name) %}
+        {% if a or b %}<tr class="{{ 'differ' if second and a != b }}"><th>pay to: {{ name | replace("_", " ") }}</th><td>{{ a }}</td><td>{{ b }}</td></tr>{% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if first.get("lines") %}
+  <div class="table-wrap lines">
+    <table class="data">
+      <thead><tr><th>Line</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr></thead>
+      <tbody>{% for l in first.lines %}<tr><td>{{ l.description }}</td><td class="num">{{ l.quantity }}</td><td class="num">{{ l.unit_price | amount }}</td><td class="num">{{ l.amount | amount }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endif %}
+  <div class="card-foot">Reading cost: ${{ "%.4f" | format((inv.reading.usd or 0) + ((inv.check_reading or {}).get("usd") or 0)) }}.</div>
+</section>
 {% endif %}
 
 {% if inv.airlock %}
-<h2>The file</h2>
 {% set a = inv.airlock %}
-<p>{{ a.pages }} page(s), {{ a.bytes }} bytes. Opened in {{ a.sandbox.backend or "no sandbox" }}{% if a.sandbox.network %} with network {{ a.sandbox.network }}{% endif %}.</p>
-{% if a.hidden %}
-  <h3>Hidden text found in the file</h3>
-  <p class="quiet">A person cannot see this text on the page. It is quoted here so you know what the file tried to say; it never reached the model.</p>
-  {% for h in a.hidden %}<blockquote><span class="quiet">Page {{ h.page }}, {{ h.reason }}:</span> {{ h.text }}</blockquote>{% endfor %}
-{% endif %}
-{% if a.active %}
-  <h3>Active content</h3>
-  <ul>{% for x in a.active %}<li>{{ x.what }} ({{ x.where }}){% if x.severity == "hold" %}: holds the invoice{% endif %}</li>{% endfor %}</ul>
-{% endif %}
-{% for p in a.problems %}<p class="hold">{{ p }}</p>{% endfor %}
+<section class="card" aria-labelledby="file-title">
+  <div class="card-head">
+    <h2 id="file-title">The file</h2>
+    <p>{{ a.pages }} page(s), {{ a.bytes }} bytes. Opened in {{ a.sandbox.backend or "no sandbox" }}{% if a.sandbox.network %} with network {{ a.sandbox.network }}{% endif %}.</p>
+  </div>
+  {% if a.hidden or a.active or a.problems %}
+  <div class="card-body file-findings">
+  {% if a.hidden %}
+    <h3>Hidden text found in the file</h3>
+    <p class="quiet small">A person cannot see this text on the page. It is quoted here so you know what the file tried to say; it never reached the model.</p>
+    {% for h in a.hidden %}<blockquote class="hidden-text"><span class="where">Page {{ h.page }}, {{ h.reason }}:</span> {{ h.text }}</blockquote>{% endfor %}
+  {% endif %}
+  {% if a.active %}
+    <h3>Active content</h3>
+    <ul class="active">{% for x in a.active %}<li>{{ x.what }} ({{ x.where }}){% if x.severity == "hold" %}: <span class="hold">holds the invoice</span>{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+  {% for p in a.problems %}<div class="callout bad">{{ icon.alert() }}<p>{{ p }}</p></div>{% endfor %}
+  </div>
+  {% endif %}
+</section>
 {% endif %}
 
-<h2>Ledger</h2>
-<table class="ledger">
-  <tbody>{% for e in entries %}<tr><td>{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td><td class="quiet">{{ e.hash[:12] }}</td></tr>{% endfor %}</tbody>
-</table>
+<section class="card" aria-labelledby="ledger-title">
+  <div class="card-head"><h2 id="ledger-title">Ledger</h2></div>
+  <div class="table-wrap">
+    <table class="data compact ledger">
+      <tbody>{% for e in entries %}<tr><td class="when">{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td><td class="hash">{{ e.hash[:12] }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
 </div>
 <aside class="review-pages" aria-label="The invoice's pages">
   {% if inv.airlock and inv.airlock.images %}
-    <p class="quiet small">The pages as they came out of the microVM: what a person sees, and all the models saw.</p>
+  <div class="viewer">
+    <p class="viewer-note">{{ icon.eye() }}<span>The pages as they came out of the microVM: what a person sees, and all the models saw.</span></p>
     <div class="pages">{% for name in inv.airlock.images %}<img src="{{ url_for('page_image', invoice_id=inv.id, name=name) }}" alt="Page {{ loop.index }} of the invoice">{% endfor %}</div>
+  </div>
   {% elif inv.airlock %}
-    <p class="quiet">No page images came out of the microVM for this file.</p>
+  <div class="viewer">
+    <div class="empty">{{ icon.file() }}<p>No page images came out of the microVM for this file.</p></div>
+  </div>
   {% endif %}
 </aside>
 </div>

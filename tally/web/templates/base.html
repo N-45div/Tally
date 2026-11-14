@@ -1,43 +1,54 @@
-<!doctype html>
+{% import "_icons.html" as icon %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   {% block head %}{% endblock %}
   <title>{% block title %}Tally{% endblock %} · Tally</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='tally.css') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="{{ url_for('home') }}">Tally</a>
-    {% if not user %}
-    <nav>
-      {% if demo_on %}<a href="{{ url_for('demo') }}">Try the demo</a>{% endif %}
-      <a href="{{ url_for('lab') }}">The lab</a>
-    </nav>
-    <a class="signin" href="{{ url_for('login') }}">Sign in</a>
-    {% endif %}
-    {% if user %}
-    <nav>
-      <a href="{{ url_for('queue') }}">Invoices</a>
-      <a href="{{ url_for('payruns_page') }}">Payment runs</a>
-      <a href="{{ url_for('vendors') }}">Vendors</a>
-      <a href="{{ url_for('pos') }}">Purchase orders</a>
-      <a href="{{ url_for('ledger_page') }}">Ledger</a>
-      {% if not in_demo %}<a href="{{ url_for('devices') }}">Devices</a>{% endif %}
-    </nav>
-    <form method="post" action="{{ url_for('logout') }}" class="logout">
-      <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      {% if in_demo %}<span>{{ user }}</span> <button class="link">Leave the demo</button>{% else %}<a href="{{ url_for('account') }}">{{ user }}</a> <button class="link">Sign out</button>{% endif %}
-    </form>
-    {% endif %}
+  <a class="skip" href="#main">Skip to the page</a>
+  {% set ep = request.endpoint %}
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{{ url_for('home') }}">{{ icon.mark() }}<span>Tally</span></a>
+      {% if not user %}
+      <nav class="nav nav-public" aria-label="Tally">
+        {% if demo_on %}<a href="{{ url_for('demo') }}"{% if ep == "demo" %} aria-current="page"{% endif %}>Try the demo</a>{% endif %}
+        <a href="{{ url_for('lab') }}"{% if ep == "lab" %} aria-current="page"{% endif %}>The lab</a>
+      </nav>
+      <a class="btn btn-secondary btn-sm signin" href="{{ url_for('login') }}">Sign in</a>
+      {% endif %}
+      {% if user %}
+      <nav class="nav nav-app" aria-label="Workspace">
+        <a href="{{ url_for('queue') }}"{% if ep in ("queue", "invoice") %} aria-current="page"{% endif %}>Invoices</a>
+        <a href="{{ url_for('payruns_page') }}"{% if ep in ("payruns_page", "payrun_page") %} aria-current="page"{% endif %}>Payment runs</a>
+        <a href="{{ url_for('vendors') }}"{% if ep == "vendors" %} aria-current="page"{% endif %}>Vendors</a>
+        <a href="{{ url_for('pos') }}"{% if ep == "pos" %} aria-current="page"{% endif %}>Purchase orders</a>
+        <a href="{{ url_for('ledger_page') }}"{% if ep == "ledger_page" %} aria-current="page"{% endif %}>Ledger</a>
+        {% if not in_demo %}<a href="{{ url_for('devices') }}"{% if ep == "devices" %} aria-current="page"{% endif %}>Devices</a>{% endif %}
+      </nav>
+      <form method="post" action="{{ url_for('logout') }}" class="user">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        {% if in_demo %}<span class="user-chip"><span class="avatar" aria-hidden="true">{{ user[:1] }}</span><span class="user-name">{{ user }}</span></span> <button class="btn btn-ghost btn-sm">Leave the demo</button>{% else %}<a class="user-chip" href="{{ url_for('account') }}"{% if ep == "account" %} aria-current="page"{% endif %}><span class="avatar" aria-hidden="true">{{ user[:1] }}</span><span class="user-name">{{ user }}</span></a> <button class="btn btn-ghost btn-sm">Sign out</button>{% endif %}
+      </form>
+      {% endif %}
+    </div>
   </header>
   {% if in_demo %}
-  <p class="demo-bar">Demo workspace: it resets every three hours, and other visitors can see what you upload.
-    <a href="{{ url_for('demo') }}">Sample invoices</a> · <a href="{{ url_for('lab') }}">The lab</a></p>
+  <div class="demo-bar">
+    <div>
+      {{ icon.info() }}
+      <p>Demo workspace: it resets every three hours, and other visitors can see what you upload.</p>
+      <nav aria-label="Demo"><a href="{{ url_for('demo') }}">Sample invoices</a> <a href="{{ url_for('lab') }}">The lab</a></nav>
+    </div>
+  </div>
   {% endif %}
-  <main>
-    {% for message in get_flashed_messages() %}<p class="flash">{{ message }}</p>{% endfor %}
+  <main id="main" class="page{% if layout is defined %} {{ layout }}{% endif %}">
+    {% for message in get_flashed_messages() %}<div class="flash" role="status">{{ icon.info() }}<p>{{ message }}</p></div>{% endfor %}
     {% block main %}{% endblock %}
   </main>
 </body>

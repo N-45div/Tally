@@ -1,94 +1,146 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
 {% set labels = {"queued": "Planning", "planned": "Plan ready", "failed": "Not planned", "approved": "Approved", "discarded": "Discarded"} %}
 {% block head %}{% if run.status == "queued" %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
 {% block title %}Payment run {{ run.id }}{% endblock %}
 {% block main %}
 {% set plan = run.plan or {} %}{% set d = run.detail or {} %}
-<h1>Payment run {{ run.id }} <span class="status run-{{ run.status }}">{{ labels[run.status] }}</span></h1>
-<p class="quiet">Asked by {{ run.requested_by }} at {{ run.requested_at[:16] | replace("T", " ") }} · pay date {{ run.pay_date }} ·
-  cash available {{ run.currency }} {{ run.cash_cents | money }}</p>
-<blockquote class="policy">{{ run.policy }}</blockquote>
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('payruns_page') }}">Payment runs</a><span class="sep" aria-hidden="true">/</span><span>Payment run {{ run.id }}</span></nav>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Payment run {{ run.id }} <span class="status run-{{ run.status }}">{{ labels[run.status] }}</span></h1>
+    <p class="meta"><span>Asked by {{ run.requested_by }} at {{ run.requested_at[:16] | replace("T", " ") }}</span><span class="dot" aria-hidden="true">·</span><span>pay date {{ run.pay_date }}</span><span class="dot" aria-hidden="true">·</span><span>cash available {{ run.currency }} {{ run.cash_cents | money }}</span></p>
+  </div>
+</div>
+
+<figure class="policy">
+  <span class="policy-icon">{{ icon.quote() }}</span>
+  <blockquote class="policy">{{ run.policy }}</blockquote>
+</figure>
 
 {% if run.status == "queued" %}
-  <p>SERV Reasoning is reading the policy against the approved invoices. This page refreshes by itself.</p>
+  <div class="callout info"><span class="spinner" aria-hidden="true"></span><p>SERV Reasoning is reading the policy against the approved invoices. This page refreshes by itself.</p></div>
 {% elif run.status == "failed" %}
-  <p class="hold">No plan: {{ d.why }}</p>
+  <div class="callout bad">{{ icon.alert() }}<p>No plan: {{ d.why }}</p></div>
 {% endif %}
 
 {% if plan %}
-<section class="decision {{ 'ready' if run.status in ['planned', 'approved'] else 'held' }}">
-  <h2>{% if run.status == "approved" %}Approved by {{ run.decided_by }}{% else %}The plan{% endif %}</h2>
-  <p>{{ plan.summary }}</p>
-  <p><strong>Pay {{ plan.pay | length }} invoice(s), {{ run.currency }} {{ plan.total_cents | money }}</strong>, leaving
-     {{ run.currency }} {{ plan.cash_left_cents | money }} of the cash. Every payment goes to the bank details on file.</p>
+<section class="plan decision {{ 'ready' if run.status in ['planned', 'approved'] else 'held' }} tone-run-{{ run.status }}">
+  <div class="plan-head">
+    <span class="decision-icon">{% if run.status == "approved" %}{{ icon.check("icon icon-lg") }}{% else %}{{ icon.coins("icon icon-lg") }}{% endif %}</span>
+    <h2>{% if run.status == "approved" %}Approved by {{ run.decided_by }}{% else %}The plan{% endif %}</h2>
+  </div>
+  <div class="plan-figures">
+    <div class="figure pay">
+      <span class="label">Pay {{ plan.pay | length }} invoice(s)</span>
+      <span class="value">{{ run.currency }} {{ plan.total_cents | money }}</span>
+    </div>
+    <div class="figure">
+      <span class="label">Cash left</span>
+      <span class="value">{{ run.currency }} {{ plan.cash_left_cents | money }}</span>
+    </div>
+    <div class="figure">
+      <span class="label">Pay date</span>
+      <span class="value date">{{ run.pay_date }}</span>
+    </div>
+  </div>
+  <div class="plan-body">
+    <p class="plan-summary">{{ plan.summary }}</p>
+    <p class="plan-note">{{ icon.lock() }}<span>Every payment goes to the bank details on file.</span></p>
+  </div>
   {% if run.status == "planned" %}
   <div class="actions">
-    <form method="post" action="{{ url_for('payrun_approve', payrun_id=run.id) }}">
-      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="plan_hash" value="{{ run.plan_hash }}">
-      <button>Approve this plan</button>
-    </form>
-    <form method="post" action="{{ url_for('payrun_discard', payrun_id=run.id) }}">
-      <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Discard</button>
-    </form>
+    <div class="form-actions">
+      <form method="post" action="{{ url_for('payrun_approve', payrun_id=run.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="plan_hash" value="{{ run.plan_hash }}">
+        <button class="btn btn-approve">{{ icon.check() }}Approve this plan</button>
+      </form>
+      <form method="post" action="{{ url_for('payrun_discard', payrun_id=run.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn-secondary">Discard</button>
+      </form>
+    </div>
+    <p class="hint">Approving records exactly this plan (hash <span class="mono">{{ run.plan_hash[:16] }}</span>…). It is rebuilt from the records at that
+      moment: if an invoice, a vendor's bank details or the cash changed since, the run is refused and planned again.</p>
   </div>
-  <p class="quiet small">Approving records exactly this plan (hash {{ run.plan_hash[:16] }}…). It is rebuilt from the records at that
-    moment: if an invoice, a vendor's bank details or the cash changed since, the run is refused and planned again.</p>
   {% elif run.status == "approved" %}
-  <p><a class="button" href="{{ url_for('payrun_file', payrun_id=run.id) }}">Download the payment file for the bank (CSV)</a></p>
-  <p class="quiet small">Tally records payments; it does not move money. Send this file to the bank from your banking app.</p>
+  <div class="actions">
+    <div class="form-actions"><a class="btn btn-primary" href="{{ url_for('payrun_file', payrun_id=run.id) }}">{{ icon.download() }}Download the payment file for the bank (CSV)</a></div>
+    <p class="hint">Tally records payments; it does not move money. Send this file to the bank from your banking app.</p>
+  </div>
   {% endif %}
 </section>
 
-<h2>How the policy was read</h2>
-<ul class="checks">{% for r in plan.policy_reading %}<li class="ok"><strong>{{ r.rule }}</strong> {{ r.applied }}</li>{% endfor %}</ul>
+<section class="card" aria-labelledby="reading-title">
+  <div class="card-head"><h2 id="reading-title">How the policy was read</h2></div>
+  <ul class="policy-reading">{% for r in plan.policy_reading %}<li><strong>{{ r.rule }}</strong> <span>{{ r.applied }}</span></li>{% endfor %}</ul>
+</section>
 
-<h2>Pay now</h2>
-<table>
-  <thead><tr><th>Invoice</th><th>Vendor on file</th><th>Due</th><th class="num">Amount</th><th>Why</th></tr></thead>
-  <tbody>{% for p in plan.pay %}<tr>
-    <td><a href="{{ url_for('invoice', invoice_id=p.invoice) }}">{{ p.invoice }}</a></td><td>{{ p.vendor }}</td>
-    <td>{{ p.due_date or "not clear" }}</td><td class="num">{{ run.currency }} {{ p.amount_cents | money }}</td><td>{{ p.why }}</td></tr>{% endfor %}</tbody>
-</table>
+<section class="card" aria-labelledby="pay-title">
+  <div class="card-head"><h2 id="pay-title">Pay now</h2><p class="tabular">{{ run.currency }} {{ plan.total_cents | money }}</p></div>
+  <div class="table-wrap">
+    <table class="data plan-table">
+      <thead><tr><th>Invoice</th><th>Vendor on file</th><th>Due</th><th class="num">Amount</th><th>Why</th></tr></thead>
+      <tbody>{% for p in plan.pay %}<tr>
+        <td><a class="id" href="{{ url_for('invoice', invoice_id=p.invoice) }}">{{ p.invoice }}</a></td><td class="vendor">{{ p.vendor }}</td>
+        <td class="nowrap">{{ p.due_date or "not clear" }}</td><td class="num">{{ run.currency }} {{ p.amount_cents | money }}</td><td class="why">{{ p.why }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
 
 {% if plan.defer %}
-<h2>Leave for a later run</h2>
-<table>
-  <thead><tr><th>Invoice</th><th>Vendor on file</th><th>Due</th><th class="num">Amount</th><th>Why</th></tr></thead>
-  <tbody>{% for p in plan.defer %}<tr>
-    <td><a href="{{ url_for('invoice', invoice_id=p.invoice) }}">{{ p.invoice }}</a></td><td>{{ p.vendor }}</td>
-    <td>{{ p.due_date or "not clear" }}{% if p.flag %} <span class="risk medium">{{ p.flag }}</span>{% endif %}</td>
-    <td class="num">{{ run.currency }} {{ p.amount_cents | money }}</td><td>{{ p.why }}</td></tr>{% endfor %}</tbody>
-</table>
+<section class="card" aria-labelledby="defer-title">
+  <div class="card-head"><h2 id="defer-title">Leave for a later run</h2></div>
+  <div class="table-wrap">
+    <table class="data plan-table">
+      <thead><tr><th>Invoice</th><th>Vendor on file</th><th>Due</th><th class="num">Amount</th><th>Why</th></tr></thead>
+      <tbody>{% for p in plan.defer %}<tr>
+        <td><a class="id" href="{{ url_for('invoice', invoice_id=p.invoice) }}">{{ p.invoice }}</a></td><td class="vendor">{{ p.vendor }}</td>
+        <td><span class="nowrap">{{ p.due_date or "not clear" }}</span>{% if p.flag %} <span class="risk medium">{{ p.flag }}</span>{% endif %}</td>
+        <td class="num">{{ run.currency }} {{ p.amount_cents | money }}</td><td class="why">{{ p.why }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
 {% endif %}
 
 {% set chosen = plan.pay | map(attribute="invoice") | list %}
-<h2>Beside code's own plan</h2>
-<p class="quiet">Code's plan ignores the policy: due soonest first, as many as the cash covers. Where the two differ, the policy is why.</p>
-<p>Code would pay {% for i in plan.baseline %}<a href="{{ url_for('invoice', invoice_id=i) }}">#{{ i }}</a>{% if i not in chosen %} <span class="quiet">(not in this plan)</span>{% endif %}{% if not loop.last %}, {% endif %}{% else %}nothing{% endfor %}.
-  {% for i in chosen if i not in plan.baseline %}{% if loop.first %}This plan also pays {% endif %}#{{ i }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
-
-{% if d.changed and (d.changed.unknown_ids or d.changed.over_cash) %}
-<p class="hold">Code changed the model's answer: {% if d.changed.unknown_ids %}dropped invoice ids not on the list ({{ d.changed.unknown_ids | join(", ") }}){% endif %}
-  {% if d.changed.over_cash %}took out {{ d.changed.over_cash | map("string") | join(", ") }} to stay within the cash{% endif %}.</p>
-{% endif %}
-<p class="quiet small">Planned by {{ d.model }} through SERV Reasoning in {{ d.seconds }} s for ${{ "%.4f" | format(d.usd or 0) }}{% if d.serv_request_id %}; SERV request {{ d.serv_request_id }}{% endif %}.
-  The model chose among approved invoices only; the amounts and payees are code's, from the records.</p>
+<section class="card" aria-labelledby="beside-title">
+  <div class="card-head"><h2 id="beside-title">Beside code's own plan</h2></div>
+  <div class="card-body beside">
+    <p class="quiet">Code's plan ignores the policy: due soonest first, as many as the cash covers. Where the two differ, the policy is why.</p>
+    <p>Code would pay {% for i in plan.baseline %}<a class="ref{{ ' out' if i not in chosen }}" href="{{ url_for('invoice', invoice_id=i) }}">#{{ i }}</a>{% if i not in chosen %} <span class="quiet">(not in this plan)</span>{% endif %}{% if not loop.last %}, {% endif %}{% else %}nothing{% endfor %}.
+      {% for i in chosen if i not in plan.baseline %}{% if loop.first %}This plan also pays {% endif %}#{{ i }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    {% if d.changed and (d.changed.unknown_ids or d.changed.over_cash) %}
+    <div class="callout warn">{{ icon.alert() }}<p>Code changed the model's answer: {% if d.changed.unknown_ids %}dropped invoice ids not on the list ({{ d.changed.unknown_ids | join(", ") }}){% endif %}
+      {% if d.changed.over_cash %}took out {{ d.changed.over_cash | map("string") | join(", ") }} to stay within the cash{% endif %}.</p></div>
+    {% endif %}
+  </div>
+  <div class="card-foot">Planned by {{ d.model }} through SERV Reasoning in {{ d.seconds }} s for ${{ "%.4f" | format(d.usd or 0) }}{% if d.serv_request_id %}; SERV request {{ d.serv_request_id }}{% endif %}.
+    The model chose among approved invoices only; the amounts and payees are code's, from the records.</div>
+</section>
 {% endif %}
 
 {% if payments %}
-<h2>Payments recorded</h2>
-<table>
-  <thead><tr><th>Invoice</th><th>Payee on file</th><th>Account on file</th><th class="num">Amount</th></tr></thead>
-  <tbody>{% for p in payments %}<tr><td>{{ p.invoice_id }}</td><td>{{ p.vendor }}</td>
-    <td>{% for k, v in p.pay_to.items() if v %}{{ k | replace("_", " ") }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
-    <td class="num">{{ p.currency }} {{ p.amount_cents | money }}</td></tr>{% endfor %}</tbody>
-</table>
+<section class="card" aria-labelledby="paid-title">
+  <div class="card-head"><h2 id="paid-title">Payments recorded</h2></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Invoice</th><th>Payee on file</th><th>Account on file</th><th class="num">Amount</th></tr></thead>
+      <tbody>{% for p in payments %}<tr><td class="id">{{ p.invoice_id }}</td><td>{{ p.vendor }}</td>
+        <td class="account">{% for k, v in p.pay_to.items() if v %}{{ k | replace("_", " ") }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+        <td class="num">{{ p.currency }} {{ p.amount_cents | money }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
 {% endif %}
 
 {% if run.status in ["queued", "failed"] %}
-<form method="post" action="{{ url_for('payrun_discard', payrun_id=run.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Discard</button></form>
+<form method="post" action="{{ url_for('payrun_discard', payrun_id=run.id) }}" class="discard"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn-secondary">Discard</button></form>
 {% endif %}
 
-<h2>Ledger</h2>
-<table class="ledger"><tbody>{% for e in entries %}<tr><td>{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td><td class="quiet">{{ e.hash[:12] }}</td></tr>{% endfor %}</tbody></table>
+<section class="card" aria-labelledby="ledger-title">
+  <div class="card-head"><h2 id="ledger-title">Ledger</h2></div>
+  <div class="table-wrap">
+    <table class="data compact ledger"><tbody>{% for e in entries %}<tr><td class="when">{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td><td class="hash">{{ e.hash[:12] }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+</section>
 {% endblock %}

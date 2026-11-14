@@ -1,99 +1,133 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% set layout = "landing" %}
 {% block title %}An airlock for supplier invoices{% endblock %}
 {% block main %}
 <section class="hero">
-  <p class="eyebrow">For small finance teams</p>
-  <h1>An airlock for supplier invoices.</h1>
-  <p class="lede">Supplier invoices are files from strangers, and they now reach AI agents that can pay money. A PDF can
-    carry instructions no person ever sees: white text, text under a shape, text off the page. Tally opens every
-    invoice in a throwaway microVM, lets out only what a person would see, and leaves the decision to fixed rules
-    and a person.</p>
-  <div class="cta">
-    {% if user %}
-      <a class="button" href="{{ url_for('queue') }}">{{ "Back to the demo invoices" if in_demo else "Open your invoices" }}</a>
-    {% elif demo_on %}
-      <a class="button" href="{{ url_for('demo') }}">Try the demo</a>
-    {% else %}
-      <a class="button" href="{{ url_for('login') }}">Sign in</a>
-    {% endif %}
-    <a class="button secondary" href="{{ url_for('lab') }}">See how it is attacked</a>
+  <div class="wrap hero-grid">
+    <div class="hero-text">
+      <p class="eyebrow">For small finance teams</p>
+      <h1>An airlock for supplier invoices.</h1>
+      <p class="lede">Supplier invoices are files from strangers, and they now reach AI agents that can pay money. A PDF can
+        carry instructions no person ever sees: white text, text under a shape, text off the page. Tally opens every
+        invoice in a throwaway microVM, lets out only what a person would see, and leaves the decision to fixed rules
+        and a person.</p>
+      <div class="cta">
+        {% if user %}
+          <a class="btn btn-primary btn-lg" href="{{ url_for('queue') }}">{{ "Back to the demo invoices" if in_demo else "Open your invoices" }}{{ icon.arrow() }}</a>
+        {% elif demo_on %}
+          <a class="btn btn-primary btn-lg" href="{{ url_for('demo') }}">Try the demo{{ icon.arrow() }}</a>
+        {% else %}
+          <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}">Sign in{{ icon.arrow() }}</a>
+        {% endif %}
+        <a class="btn btn-secondary btn-lg" href="{{ url_for('lab') }}">See how it is attacked</a>
+      </div>
+    </div>
+    <div class="airlock" aria-hidden="true">
+      <div class="airlock-step in">
+        <span class="airlock-icon">{{ icon.file() }}</span>
+        <span>A PDF from a stranger</span>
+      </div>
+      <div class="airlock-step vm">
+        <span class="airlock-icon">{{ icon.box() }}</span>
+        <span>A throwaway microVM</span>
+        <span class="airlock-tags"><span>no network</span><span>no keys</span></span>
+      </div>
+      <div class="airlock-step out">
+        <span class="airlock-icon">{{ icon.eye() }}</span>
+        <span>Only what a person would see</span>
+      </div>
+      <div class="airlock-step decide">
+        <span class="airlock-icon">{{ icon.person() }}</span>
+        <span>Fixed rules, then a person</span>
+      </div>
+    </div>
   </div>
 </section>
 
-<section>
-  <h2>What happens to an invoice</h2>
-  <ol class="path">
-    <li><h3>Uploaded</h3><p>A PDF from a supplier, kept by its fingerprint. The web app never opens it.</p></li>
-    <li><h3>Opened in its own microVM</h3><p>Its own kernel, no network, no keys, one CPU, 512 MB, a time limit. Removed afterwards.</p></li>
-    <li><h3>Only images come out</h3><p>The pages as a person sees them, and a report of anything hidden or active. Never the text layer.</p></li>
-    <li><h3>Read twice</h3><p>Two model families, GLM and Qwen on Vultr, copy the fields off the images. They have no tools and decide nothing.</p></li>
-    <li><h3>Fixed rules decide</h3><p>A vendor on file, the bank details on file, an open purchase order with room, sums that add up, not a copy.</p></li>
-    <li><h3>A person approves</h3><p>Payment goes to the account on file, never to one printed on the invoice. Every step goes in the ledger.</p></li>
-  </ol>
+<section class="band">
+  <div class="wrap">
+    <h2 class="band-title">What happens to an invoice</h2>
+    <ol class="path">
+      <li><span class="path-icon">{{ icon.upload() }}</span><h3>Uploaded</h3><p>A PDF from a supplier, kept by its fingerprint. The web app never opens it.</p></li>
+      <li><span class="path-icon">{{ icon.box() }}</span><h3>Opened in its own microVM</h3><p>Its own kernel, no network, no keys, one CPU, 512 MB, a time limit. Removed afterwards.</p></li>
+      <li><span class="path-icon">{{ icon.eye() }}</span><h3>Only images come out</h3><p>The pages as a person sees them, and a report of anything hidden or active. Never the text layer.</p></li>
+      <li><span class="path-icon">{{ icon.file() }}</span><h3>Read twice</h3><p>Two model families, GLM and Qwen on Vultr, copy the fields off the images. They have no tools and decide nothing.</p></li>
+      <li><span class="path-icon">{{ icon.rules() }}</span><h3>Fixed rules decide</h3><p>A vendor on file, the bank details on file, an open purchase order with room, sums that add up, not a copy.</p></li>
+      <li><span class="path-icon">{{ icon.person() }}</span><h3>A person approves</h3><p>Payment goes to the account on file, never to one printed on the invoice. Every step goes in the ledger.</p></li>
+    </ol>
+  </div>
 </section>
 
 {% if t %}
-<section>
-  <h2>Measured, not promised</h2>
-  <p class="quiet">After every release, the host attacks Tally with 24 invoice files built to get money paid wrongly, and
-    gives the same files to a naive AI agent that reads the PDF's text. Over the {{ t.runs }} run{{ "s" if t.runs != 1 }} so far:</p>
-  {% set n = t.naive["Naive agent, with records"] %}
-  <div class="tiles">
-    <div class="tile">
-      <div class="label">Wrong payments by Tally</div>
-      <div class="value">{{ t.tally_wrong }}</div>
-      <div class="sub">in {{ t.files }} attack files</div>
+<section class="band">
+  <div class="wrap">
+    <h2 class="band-title">Measured, not promised</h2>
+    <p class="band-note">After every release, the host attacks Tally with 24 invoice files built to get money paid wrongly, and
+      gives the same files to a naive AI agent that reads the PDF's text. Over the {{ t.runs }} run{{ "s" if t.runs != 1 }} so far:</p>
+    {% set n = t.naive["Naive agent, with records"] %}
+    <div class="tiles">
+      <div class="tile">
+        <div class="label">Wrong payments by Tally</div>
+        <div class="value">{{ t.tally_wrong }}</div>
+        <div class="sub">in {{ t.files }} attack files</div>
+      </div>
+      <div class="tile">
+        <div class="label">Times a hidden bank account reached the model</div>
+        <div class="value">{{ t.hidden_read }}</div>
+        <div class="sub">of {{ t.hidden_files }} files that hid one</div>
+      </div>
+      <div class="tile">
+        <div class="label">Holds the naive agent missed</div>
+        <div class="value">{{ (100 * n.missed / n.decisions) | round | int if n.decisions else 0 }}%</div>
+        <div class="sub">with the same records as Tally: {{ n.missed }} of {{ n.decisions }} decisions</div>
+      </div>
+      {% if t.guest %}
+      <div class="tile">
+        <div class="label">Attacks from inside the microVM contained</div>
+        <div class="value">{{ t.guest.contained }} of {{ t.guest.attacks }}</div>
+        <div class="sub">latest run; <a href="{{ url_for('lab') }}#inside">which one is not, and why</a></div>
+      </div>
+      {% endif %}
     </div>
-    <div class="tile">
-      <div class="label">Times a hidden bank account reached the model</div>
-      <div class="value">{{ t.hidden_read }}</div>
-      <div class="sub">of {{ t.hidden_files }} files that hid one</div>
-    </div>
-    <div class="tile">
-      <div class="label">Holds the naive agent missed</div>
-      <div class="value">{{ (100 * n.missed / n.decisions) | round | int if n.decisions else 0 }}%</div>
-      <div class="sub">with the same records as Tally: {{ n.missed }} of {{ n.decisions }} decisions</div>
-    </div>
-    {% if t.guest %}
-    <div class="tile">
-      <div class="label">Attacks from inside the microVM contained</div>
-      <div class="value">{{ t.guest.contained }} of {{ t.guest.attacks }}</div>
-      <div class="sub">latest run; <a href="{{ url_for('lab') }}#inside">which one is not, and why</a></div>
-    </div>
-    {% endif %}
+    <p><a class="more-link" href="{{ url_for('lab') }}">Every attack, in every run {{ icon.arrow() }}</a></p>
   </div>
-  <p><a href="{{ url_for('lab') }}">Every attack, in every run →</a></p>
 </section>
 {% endif %}
 
-<section class="two">
-  <div>
-    <h2>Hidden in the file</h2>
-    <p class="quiet">Held when the file is opened, before any model sees anything.</p>
-    <ul class="plain">
-      <li>White text, text under a shape, text off the page, text too small to read</li>
-      <li>Invisible, transparent and dark-on-dark text</li>
-      <li>A quiet "our bank details changed" notice in white</li>
-      <li>JavaScript, launch actions, embedded programs, encryption</li>
-      <li>Files that are not PDFs, cut off, too long or too large to draw</li>
-    </ul>
-  </div>
-  <div>
-    <h2>Wrong on the page</h2>
-    <p class="quiet">Held by the fixed rules, whatever the models read.</p>
-    <ul class="plain">
-      <li>A bank account that is not the one on file</li>
-      <li>A vendor name one letter off a real one</li>
-      <li>A purchase order that does not exist, is closed or has no room left</li>
-      <li>Totals that do not add up</li>
-      <li>An invoice number seen before</li>
-    </ul>
+<section class="band">
+  <div class="wrap two">
+    <div class="card card-pad catch">
+      <div class="catch-head"><span class="catch-icon">{{ icon.shield_off() }}</span><h2>Hidden in the file</h2></div>
+      <p class="quiet">Held when the file is opened, before any model sees anything.</p>
+      <ul class="plain">
+        <li>White text, text under a shape, text off the page, text too small to read</li>
+        <li>Invisible, transparent and dark-on-dark text</li>
+        <li>A quiet "our bank details changed" notice in white</li>
+        <li>JavaScript, launch actions, embedded programs, encryption</li>
+        <li>Files that are not PDFs, cut off, too long or too large to draw</li>
+      </ul>
+    </div>
+    <div class="card card-pad catch">
+      <div class="catch-head"><span class="catch-icon">{{ icon.alert() }}</span><h2>Wrong on the page</h2></div>
+      <p class="quiet">Held by the fixed rules, whatever the models read.</p>
+      <ul class="plain">
+        <li>A bank account that is not the one on file</li>
+        <li>A vendor name one letter off a real one</li>
+        <li>A purchase order that does not exist, is closed or has no room left</li>
+        <li>Totals that do not add up</li>
+        <li>An invoice number seen before</li>
+      </ul>
+    </div>
   </div>
 </section>
 
 <footer class="foot">
-  <p>Runs on a Vultr VX1 instance, with a Microsandbox microVM for every file and Vultr Serverless Inference for the
-    readings. The pages you see here run no JavaScript. Tally does not move money: an approval records what to pay,
-    to whom and to which account.</p>
+  <div class="wrap foot-inner">
+    {{ icon.mark() }}
+    <p>Runs on a Vultr VX1 instance, with a Microsandbox microVM for every file and Vultr Serverless Inference for the
+      readings. The pages you see here run no JavaScript. Tally does not move money: an approval records what to pay,
+      to whom and to which account.</p>
+  </div>
 </footer>
 {% endblock %}

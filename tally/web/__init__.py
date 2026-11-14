@@ -88,8 +88,8 @@ def create_app(data_dir: Path, secret_key: str, secure_cookies: bool = True, lab
 
     @app.after_request
     def headers(resp):
-        resp.headers["Content-Security-Policy"] = ("default-src 'none'; img-src 'self'; style-src 'self'; form-action 'self'; "
-                                                   "frame-ancestors 'none'; base-uri 'none'")
+        resp.headers["Content-Security-Policy"] = ("default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; "
+                                                   "form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["Referrer-Policy"] = "no-referrer"
         resp.headers["Cache-Control"] = "no-store"

@@ -1,11 +1,13 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% set layout = "public" %}
 {% set icons = {"good": "✓", "warning": "•", "serious": "~", "critical": "!", "neutral": "–"} %}
 {% macro cell(c) -%}
   <span class="cell {{ c.kind }}" title="{{ c.why }}"><span class="i" aria-hidden="true">{{ icons[c.kind] }}</span>{{ c.text }}</span>
 {%- endmacro %}
 {% block title %}The lab{% endblock %}
 {% block main %}
-<section class="hero small">
+<section class="page-hero">
   <p class="eyebrow">The lab</p>
   <h1>How Tally is attacked, after every release.</h1>
   <p class="lede">24 invoice files built to get money paid wrongly, the same files given to a naive AI agent, and 11
@@ -15,95 +17,109 @@
 </section>
 
 {% if not latest %}
-<p>The lab has not run on this host yet.</p>
+<div class="card empty">{{ icon.flask() }}<p>The lab has not run on this host yet.</p></div>
 {% else %}
 
 {% if t %}
-<section>
-  <h2>Over the {{ t.runs }} run{{ "s" if t.runs != 1 }} so far</h2>
-  <p class="quiet">A <strong>wrong payment</strong> is money to an account not on file, the wrong amount, or an invoice that
+<section class="lab-section">
+  <h2 class="section-title">Over the {{ t.runs }} run{{ "s" if t.runs != 1 }} so far</h2>
+  <p class="section-note">A <strong>wrong payment</strong> is money to an account not on file, the wrong amount, or an invoice that
     is not payable. A <strong>missed hold</strong> is paying, or making ready, something that should have been held.</p>
-  <table class="score">
-    <thead><tr><th></th><th class="num">Tally</th>{% for label in t.naive %}<th class="num">{{ label }}</th>{% endfor %}</tr></thead>
-    <tbody>
-      <tr><th>Decisions</th><td class="num">{{ t.files }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.decisions }}</td>{% endfor %}</tr>
-      <tr><th>Wrong payments</th><td class="num">{{ t.tally_wrong }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.wrong }}</td>{% endfor %}</tr>
-      <tr><th>Missed holds</th><td class="num">{{ t.tally_missed }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.missed }}</td>{% endfor %}</tr>
-      <tr><th>Paid the attacker's account</th><td class="num">0</td>{% for n in t.naive.values() %}<td class="num">{{ n.to_attacker }}</td>{% endfor %}</tr>
-    </tbody>
-  </table>
-  <figure class="bars">
-    <figcaption>Share of decisions that missed a hold</figcaption>
-    <svg viewBox="0 0 600 {{ 16 + 40 * bars | length }}" role="img" aria-label="Share of decisions that missed a hold, by approach">
-      <line class="base" x1="200" y1="0" x2="200" y2="{{ 8 + 40 * bars | length }}"/>
-      {% for b in bars %}
-      <g>
-        <title>{{ b.label }}: {{ b.missed }} of {{ b.of }} decisions ({{ b.pct }}%)</title>
-        <text class="name" x="190" y="{{ b.y + 15 }}" text-anchor="end">{{ b.label }}</text>
-        <rect class="hit" x="200" y="{{ b.y - 4 }}" width="400" height="28"/>
-        {% if b.w >= 4 %}
-        <path class="bar" d="M200,{{ b.y }} h{{ b.w - 4 }} a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-{{ b.w - 4 }} z"/>
-        {% elif b.w > 0 %}
-        <rect class="bar" x="200" y="{{ b.y }}" width="{{ b.w }}" height="20"/>
-        {% endif %}
-        <text class="value" x="{{ 208 + b.w }}" y="{{ b.y + 15 }}">{{ b.pct }}%</text>
-      </g>
-      {% endfor %}
-    </svg>
-  </figure>
+  <div class="lab-score">
+    <div class="card">
+      <div class="table-wrap">
+        <table class="data score">
+          <thead><tr><th></th><th class="num">Tally</th>{% for label in t.naive %}<th class="num">{{ label }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            <tr><th>Decisions</th><td class="num">{{ t.files }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.decisions }}</td>{% endfor %}</tr>
+            <tr><th>Wrong payments</th><td class="num">{{ t.tally_wrong }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.wrong }}</td>{% endfor %}</tr>
+            <tr><th>Missed holds</th><td class="num">{{ t.tally_missed }}</td>{% for n in t.naive.values() %}<td class="num">{{ n.missed }}</td>{% endfor %}</tr>
+            <tr><th>Paid the attacker's account</th><td class="num">0</td>{% for n in t.naive.values() %}<td class="num">{{ n.to_attacker }}</td>{% endfor %}</tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <figure class="card card-pad bars">
+      <figcaption>Share of decisions that missed a hold</figcaption>
+      <svg viewBox="0 0 600 {{ 16 + 40 * bars | length }}" role="img" aria-label="Share of decisions that missed a hold, by approach">
+        <line class="base" x1="200" y1="0" x2="200" y2="{{ 8 + 40 * bars | length }}"/>
+        {% for b in bars %}
+        <g>
+          <title>{{ b.label }}: {{ b.missed }} of {{ b.of }} decisions ({{ b.pct }}%)</title>
+          <text class="name" x="190" y="{{ b.y + 15 }}" text-anchor="end">{{ b.label }}</text>
+          <rect class="hit" x="200" y="{{ b.y - 4 }}" width="400" height="28"/>
+          {% if b.w >= 4 %}
+          <path class="bar" d="M200,{{ b.y }} h{{ b.w - 4 }} a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-{{ b.w - 4 }} z"/>
+          {% elif b.w > 0 %}
+          <rect class="bar" x="200" y="{{ b.y }}" width="{{ b.w }}" height="20"/>
+          {% endif %}
+          <text class="value" x="{{ 208 + b.w }}" y="{{ b.y + 15 }}">{{ b.pct }}%</text>
+        </g>
+        {% endfor %}
+      </svg>
+    </figure>
+  </div>
 </section>
 {% endif %}
 
-<section>
-  <h2>Every attack file, latest run</h2>
-  <p class="quiet legend">
+<section class="lab-section">
+  <h2 class="section-title">Every attack file, latest run</h2>
+  <p class="legend">
     {{ cell({"kind": "good", "text": "as it should be", "why": ""}) }}
     {{ cell({"kind": "warning", "text": "held, though fine to pay (a safe mistake)", "why": ""}) }}
     {{ cell({"kind": "serious", "text": "missed hold", "why": ""}) }}
     {{ cell({"kind": "critical", "text": "wrong payment", "why": ""}) }}
     {{ cell({"kind": "neutral", "text": "could not read the file", "why": ""}) }}
-    Hover a cell for the reason.
+    <span class="quiet">Hover a cell for the reason.</span>
   </p>
-  <table class="grid">
-    <thead><tr><th>Attack</th><th>Should be</th><th>Tally</th><th>Naive agent, text only</th><th>Naive agent, with records</th></tr></thead>
-    <tbody>
-    {% for r in grid %}
-      {% if loop.first or r.kind != grid[loop.index0 - 1].kind %}<tr class="group"><th colspan="5">{{ r.kind | capitalize }}</th></tr>{% endif %}
-      <tr>
-        <td>{{ r.attack }}</td>
-        <td>{{ r.expect }}</td>
-        <td>{{ cell(r.tally) }}</td>
-        {% for key in ["naive, text only", "naive, with records"] %}
-        <td class="tries">{% for c in r.naive[key] %}{{ cell(c) }}{% else %}<span class="quiet">not run</span>{% endfor %}</td>
+  <div class="card">
+    <div class="table-wrap">
+      <table class="data attack-grid">
+        <thead><tr><th>Attack</th><th>Should be</th><th>Tally</th><th>Naive agent, text only</th><th>Naive agent, with records</th></tr></thead>
+        <tbody>
+        {% for r in grid %}
+          {% if loop.first or r.kind != grid[loop.index0 - 1].kind %}<tr class="group"><th colspan="5">{{ r.kind | capitalize }}</th></tr>{% endif %}
+          <tr>
+            <td>{{ r.attack }}</td>
+            <td class="nowrap">{{ r.expect }}</td>
+            <td>{{ cell(r.tally) }}</td>
+            {% for key in ["naive, text only", "naive, with records"] %}
+            <td class="tries">{% for c in r.naive[key] %}{{ cell(c) }}{% else %}<span class="quiet">not run</span>{% endfor %}</td>
+            {% endfor %}
+          </tr>
         {% endfor %}
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </section>
 
 {% if latest.guest %}
-<section id="inside">
-  <h2>From inside the microVM, latest run</h2>
-  <p class="quiet">Hostile code runs in a fresh microVM with the limits every invoice gets, then its output goes through
+<section id="inside" class="lab-section">
+  <h2 class="section-title">From inside the microVM, latest run</h2>
+  <p class="section-note">Hostile code runs in a fresh microVM with the limits every invoice gets, then its output goes through
     the host's usual checks. Contained means the output was refused, nothing was left running, and the host's disk
     lost no more than a real run may write.</p>
-  <table>
-    <thead><tr><th>Attack</th><th></th><th>What happened</th><th class="num">Host disk at peak</th></tr></thead>
-    <tbody>
-    {% for g in latest.guest %}
-      <tr>
-        <td>{{ g.name }}<div class="quiet small">{{ g.what }}</div></td>
-        <td>{{ cell({"kind": "good" if g.contained else "critical", "text": "contained" if g.contained else "not contained", "why": g.checks}) }}</td>
-        <td>{{ g.outcome }}; {{ g.checks }}</td>
-        <td class="num">{{ ((g.host_disk_lost_at_peak or 0) / 1048576) | round | int }} MB</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <p class="quiet">The forged clean report is the known limit: a sandbox that was broken into and lies consistently passes
+  <div class="card">
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Attack</th><th></th><th>What happened</th><th class="num">Host disk at peak</th></tr></thead>
+        <tbody>
+        {% for g in latest.guest %}
+          <tr>
+            <td class="attack-name">{{ g.name }}<div class="quiet small">{{ g.what }}</div></td>
+            <td>{{ cell({"kind": "good" if g.contained else "critical", "text": "contained" if g.contained else "not contained", "why": g.checks}) }}</td>
+            <td>{{ g.outcome }}; {{ g.checks }}</td>
+            <td class="num">{{ ((g.host_disk_lost_at_peak or 0) / 1048576) | round | int }} MB</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="callout info limit">{{ icon.info() }}<p>The forged clean report is the known limit: a sandbox that was broken into and lies consistently passes
     the output checks. The rules about vendors, bank details and purchase orders do not depend on the sandbox, and
-    nothing is approved without a person.</p>
+    nothing is approved without a person.</p></div>
 </section>
 {% endif %}
 {% endif %}
@@ -111,9 +127,9 @@
 {% if fatura %}
 {% set f = fatura.summary %}
 {% macro pct(n, of) %}{{ (100 * n / of) | round | int if of else 0 }}%{% endmacro %}
-<section id="unseen">
-  <h2>Invoices it has never seen</h2>
-  <p class="quiet">{{ f.invoices }} invoices, {{ fatura.per_layout }} from each of the 50 layouts in
+<section id="unseen" class="lab-section">
+  <h2 class="section-title">Invoices it has never seen</h2>
+  <p class="section-note">{{ f.invoices }} invoices, {{ fatura.per_layout }} from each of the 50 layouts in
     <a href="https://doi.org/10.5281/zenodo.10371464">FATURA</a> (Limam, Dhiaf and Kessentini, 2023, CC BY 4.0), half on coloured
     backgrounds, each as a one-page PDF with no text layer, as a scanned invoice is. Each went through the whole of Tally
     and each reading was scored against the dataset's own annotations. Run {{ fatura.at[:16] | replace("T", " ") }} UTC.</p>
@@ -127,69 +143,81 @@
     <div class="tile"><div class="label">Model calls per invoice</div>
       <div class="value">${{ "%.4f" | format(f.usd_per_invoice or 0) }}</div><div class="sub">two readings; {{ f.invoices_per_minute }} invoices a minute with {{ fatura.workers }} workers</div></div>
   </div>
-  <table>
-    <thead><tr><th>Field</th><th class="num">Printed on</th><th class="num">{{ (fatura.rows[0].models[0] or "reader") }} correct</th>
-      <th class="num">{{ (fatura.rows[0].models[1] or "checker") }} correct</th><th class="num">Both correct</th></tr></thead>
-    <tbody>
-    {% for name, c in f.per_field.items() if c.printed_on %}
-      <tr><td>{{ name | replace("_", " ") }}</td><td class="num">{{ c.printed_on }}</td>
-        <td class="num">{{ c.reader }} ({{ pct(c.reader, c.printed_on) }})</td><td class="num">{{ c.checker }} ({{ pct(c.checker, c.printed_on) }})</td>
-        <td class="num">{{ c.both }} ({{ pct(c.both, c.printed_on) }})</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <p class="quiet">Tally's sums check passed on {{ f.sums_ok }} of {{ f.invoices }}. The vendor, bank and purchase order rules
+  <div class="card">
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Field</th><th class="num">Printed on</th><th class="num">{{ (fatura.rows[0].models[0] or "reader") }} correct</th>
+          <th class="num">{{ (fatura.rows[0].models[1] or "checker") }} correct</th><th class="num">Both correct</th></tr></thead>
+        <tbody>
+        {% for name, c in f.per_field.items() if c.printed_on %}
+          <tr><td>{{ name | replace("_", " ") }}</td><td class="num">{{ c.printed_on }}</td>
+            <td class="num">{{ c.reader }} <span class="quiet">({{ pct(c.reader, c.printed_on) }})</span></td><td class="num">{{ c.checker }} <span class="quiet">({{ pct(c.checker, c.printed_on) }})</span></td>
+            <td class="num">{{ c.both }} <span class="quiet">({{ pct(c.both, c.printed_on) }})</span></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="section-note after">Tally's sums check passed on {{ f.sums_ok }} of {{ f.invoices }}. The vendor, bank and purchase order rules
     are not measured here: they need records the dataset does not have.</p>
 </section>
 {% endif %}
 
 {% if load %}
-<section id="load">
-  <h2>How much one host takes</h2>
-  <p class="quiet">The same batch of invoices through the whole pipeline on one Vultr VX1 (2 vCPU, 8 GB), with 1, 2 and 4
+<section id="load" class="lab-section">
+  <h2 class="section-title">How much one host takes</h2>
+  <p class="section-note">The same batch of invoices through the whole pipeline on one Vultr VX1 (2 vCPU, 8 GB), with 1, 2 and 4
     workers. Waits are from upload to checked, to the second. Run {{ load.at[:16] | replace("T", " ") }} UTC.</p>
-  <table>
-    <thead><tr><th class="num">Workers</th><th class="num">Invoices a minute</th><th class="num">Median wait</th><th class="num">Longest wait</th>
-      <th class="num">First microVM</th><th class="num">Median microVM</th><th class="num">Ready</th></tr></thead>
-    <tbody>
-    {% for r in load.runs %}
-      <tr><td class="num">{{ r.workers }}</td><td class="num">{{ r.per_minute }}</td><td class="num">{{ r.latency_median }} s</td>
-        <td class="num">{{ r.latency_max }} s</td><td class="num">{{ r.sandbox_first }} s</td><td class="num">{{ r.sandbox_median }} s</td>
-        <td class="num">{{ r.ready }} of {{ r.invoices }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="card">
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th class="num">Workers</th><th class="num">Invoices a minute</th><th class="num">Median wait</th><th class="num">Longest wait</th>
+          <th class="num">First microVM</th><th class="num">Median microVM</th><th class="num">Ready</th></tr></thead>
+        <tbody>
+        {% for r in load.runs %}
+          <tr><td class="num">{{ r.workers }}</td><td class="num">{{ r.per_minute }}</td><td class="num">{{ r.latency_median }} s</td>
+            <td class="num">{{ r.latency_max }} s</td><td class="num">{{ r.sandbox_first }} s</td><td class="num">{{ r.sandbox_median }} s</td>
+            <td class="num">{{ r.ready }} of {{ r.invoices }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </section>
 {% endif %}
 
 {% if history %}
-<section>
-  <h2>Every run</h2>
-  <p class="quiet">The models do not answer the same way every time; this is how much the results move.</p>
-  <table>
-    <thead><tr><th>When (UTC)</th><th>Commit</th><th class="num">Tally as expected</th><th class="num">Tally wrong / missed</th>
-      <th class="num">Naive, text: wrong / missed</th><th class="num">Naive, records: wrong / missed</th><th class="num">MicroVM contained</th></tr></thead>
-    <tbody>
-    {% for h in history | reverse %}
-      {% set a = h.get("naive, text only") %}{% set b = h.get("naive, with records") %}
-      <tr>
-        <td class="nowrap">{{ h.at[:16] | replace("T", " ") }}</td><td><code>{{ h.revision }}</code></td>
-        <td class="num">{% if h.tally %}{{ h.tally.as_expected }} of {{ h.tally.files }}{% endif %}</td>
-        <td class="num">{% if h.tally %}{{ h.tally.wrong }} / {{ h.tally.missed }}{% endif %}</td>
-        <td class="num">{% if a %}{{ a.wrong }} / {{ a.missed }} of {{ a.decisions }}{% endif %}</td>
-        <td class="num">{% if b %}{{ b.wrong }} / {{ b.missed }} of {{ b.decisions }}{% endif %}</td>
-        <td class="num">{% if h.guest %}{{ h.guest.contained }} of {{ h.guest.attacks }}{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<section class="lab-section">
+  <h2 class="section-title">Every run</h2>
+  <p class="section-note">The models do not answer the same way every time; this is how much the results move.</p>
+  <div class="card">
+    <div class="table-wrap">
+      <table class="data compact">
+        <thead><tr><th>When (UTC)</th><th>Commit</th><th class="num">Tally as expected</th><th class="num">Tally wrong / missed</th>
+          <th class="num">Naive, text: wrong / missed</th><th class="num">Naive, records: wrong / missed</th><th class="num">MicroVM contained</th></tr></thead>
+        <tbody>
+        {% for h in history | reverse %}
+          {% set a = h.get("naive, text only") %}{% set b = h.get("naive, with records") %}
+          <tr>
+            <td class="nowrap">{{ h.at[:16] | replace("T", " ") }}</td><td><code class="chip">{{ h.revision }}</code></td>
+            <td class="num">{% if h.tally %}{{ h.tally.as_expected }} of {{ h.tally.files }}{% endif %}</td>
+            <td class="num">{% if h.tally %}{{ h.tally.wrong }} / {{ h.tally.missed }}{% endif %}</td>
+            <td class="num">{% if a %}{{ a.wrong }} / {{ a.missed }} of {{ a.decisions }}{% endif %}</td>
+            <td class="num">{% if b %}{{ b.wrong }} / {{ b.missed }} of {{ b.decisions }}{% endif %}</td>
+            <td class="num">{% if h.guest %}{{ h.guest.contained }} of {{ h.guest.attacks }}{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </section>
 {% endif %}
 
-<section>
-  <h2>Limits of the lab</h2>
-  <p>The attack files are Tally's own, not collected from real fraud. The naive agent is one model family, given the text
+<section class="lab-section">
+  <h2 class="section-title">Limits of the lab</h2>
+  <div class="callout limits">{{ icon.info() }}<p>The attack files are Tally's own, not collected from real fraud. The naive agent is one model family, given the text
     layer only. The numbers are small: 24 files, three tries each for the naive agent. The benchmark's invoices are
-    synthetic too, though in 50 layouts Tally was never shown, and its labels are only as good as the dataset's.</p>
+    synthetic too, though in 50 layouts Tally was never shown, and its labels are only as good as the dataset's.</p></div>
 </section>
 {% endblock %}

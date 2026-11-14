@@ -1,0 +1,124 @@
+/* Elements, before any class: type, links, lists, forms and tables look right on their own. */
+@layer base {
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 80px; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.55;
+    font-feature-settings: "cv11", "ss03";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-wrap: break-word;
+  }
+  ::selection { background: color-mix(in oklab, var(--accent) 24%, transparent); }
+  /* Light text on a dark ground reads heavier; the variable font lets body text step back a little. */
+  @media (prefers-color-scheme: dark) { body { font-weight: 370; } }
+
+  a {
+    color: var(--accent-ink);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+  a:hover { text-decoration-color: currentColor; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.011em; text-wrap: balance; }
+  h1 { font-size: 1.6rem; line-height: 1.2; font-weight: 650; letter-spacing: -0.022em; }
+  h2 { font-size: 1.0625rem; line-height: 1.35; font-weight: 620; }
+  h3 { font-size: 0.9375rem; line-height: 1.4; font-weight: 620; }
+  strong, b { font-weight: 620; }
+  p { text-wrap: pretty; }
+
+  /* Spacing inside the page, at zero specificity so any class wins. */
+  :where(main) :where(p, ul, ol, blockquote, pre, figure) { margin-block: 0 0.75rem; }
+  :where(main) :where(h2) { margin-block: 2rem 0.75rem; }
+  :where(main) :where(h3) { margin-block: 1.25rem 0.5rem; }
+  :where(main) :where(ul) { list-style: disc; padding-left: 1.25rem; }
+  :where(main) :where(ol) { list-style: decimal; padding-left: 1.25rem; }
+  :where(main) :where(li + li) { margin-top: 0.25rem; }
+  :where(main) :where(li)::marker { color: var(--faint); }
+
+  code, pre, kbd { font-family: var(--font-mono); font-size: 0.86em; }
+  :where(code) { overflow-wrap: anywhere; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 1.5rem 0; }
+
+  blockquote {
+    padding: 10px 14px;
+    border-left: 3px solid var(--line-strong);
+    background: var(--surface-2);
+    border-radius: 0 8px 8px 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* Forms */
+  :where(input:not([type="hidden"], [type="file"], [type="checkbox"], [type="radio"], [type="submit"]), select, textarea) {
+    width: 100%;
+    min-height: 38px;
+    padding: 7px 11px;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    box-shadow: var(--shadow-xs);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  :where(input, select, textarea):hover { border-color: color-mix(in oklab, var(--line-strong) 60%, var(--ink) 20%); }
+  :where(input, select, textarea):focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+  ::placeholder { color: var(--faint); opacity: 1; }
+  textarea { min-height: 88px; resize: vertical; }
+  select {
+    appearance: none;
+    padding-right: 32px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  input[type="file"] { font-size: 13.5px; color: var(--muted); max-width: 100%; }
+  input[type="file"]::file-selector-button {
+    margin-right: 10px;
+    height: 34px;
+    padding: 0 12px;
+    font: inherit;
+    font-weight: 550;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    box-shadow: var(--shadow-xs);
+    cursor: pointer;
+  }
+  input[type="file"]::file-selector-button:hover { background: var(--surface-2); }
+  label { color: var(--ink-2); }
+  button { cursor: pointer; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+  th, td { padding: 10px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line-soft); }
+  thead th {
+    font-size: 12px;
+    font-weight: 560;
+    color: var(--muted);
+    background: var(--surface-2);
+    border-bottom-color: var(--line);
+    padding-block: 9px;
+    white-space: nowrap;
+  }
+  tbody th { font-weight: 560; color: var(--ink-2); }
+  tbody tr:last-child > * { border-bottom: 0; }
+
+  img { max-width: 100%; height: auto; }
+  details > summary { cursor: pointer; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+}
