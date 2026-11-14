@@ -388,24 +388,32 @@ above): `runuser -u tally -- env XDG_RUNTIME_DIR=/run/user/$(id -u tally) bash -
   gets a workspace of its own. Reppo's evaluators also disagree run to run ("review" with low confidence on answers
   scored 94 to 100), so compare means over several cases, never one answer.
 
-## Where things stand (Nov 9)
+## Where things stand (Nov 14)
 
 - **Code**: committed and on GitHub; the suite passes locally (see Tests).
-- **Host** (`TALLY_HOST`): running the latest release, whole suite passing there, the desk worker beside the web app.
-  The person who can sign in is `ndivij`; the device "Frontdesk" is registered there.
+- **Host** (`TALLY_HOST`): running release `9a1e3d9`, whole suite passing there (197 passed, 2 skipped, the live SERV
+  tests among them); the web app, both workers, the desk worker, both advisors (the SERV key carried by
+  `push --settings` on Nov 14) and the demo. A live QA as a demo visitor passed 27 of 27 (pages, headers, case files
+  on the held samples, a payment run planned, approved and downloaded, the ledger intact). The person who can sign in
+  is `ndivij`; the device "Frontdesk" is registered there.
+- **UI**: redesigned with Vite and Tailwind (`ui/`, see its README); pages still run no JavaScript. Rebuild the
+  stylesheet after changing classes in a template: `cd ui && npm ci && npm run build`.
 - **Board**: firmware `tally-desk/0.1.5`, volume 100%, currently set to Tally on the laptop
   (`http://192.168.1.4:8765`, the `lab/desk_local.py` workspace in `C:/Users/ndivij/tally-desk-local`) because of the
   download limit above. To point it at the host: `provision.py --server https://$TALLY_HOST` with
   `TALLY_DEVICE_TOKEN` from the private settings.
-- **Video and submission material** live outside the repository: `D:/tally-video` (a HyperFrames project; `build2.py`
-  builds it, `narrate.py` makes the narration with ElevenLabs) and `C:/Users/ndivij/tally-submission`.
+- **Video and submission material** live outside the repository: `D:/tally-video` (HyperFrames projects; the SERV
+  one in `D:/tally-video/serv/`) and `C:/Users/ndivij/tally-submission` (the SERV pack in `serv/`).
+- **Keys pasted in chat on Nov 13** (the SERV and Reppo keys) should be rotated once the event is over.
 
 ### What is next
 
-1. A host in a Vultr region near the desk, so the board can use it directly (see the TCP window above), or audio
+1. Payment runs paid, not only recorded: a payment provider's API, or a rail such as Kite for vendors who take it,
+   always to details on file and within limits enforced outside the host. Until then Tally writes the bank's file.
+2. The desk device as a second key on an approved run (a press confirms what the screen approved; never alone).
+3. A host in a Vultr region near the desk, so the board can use it directly (see the TCP window above), or audio
    the board can stream at its link speed without breaking up.
-2. Faster answers: the voice is about half of the wait; the speech models can stream.
-3. Updating the device's firmware over the network instead of USB.
+4. Faster spoken answers: the voice is about half of the wait; the speech models can stream.
 
 ## What has been built, in order
 
